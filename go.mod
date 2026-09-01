@@ -3,6 +3,6 @@ module github.com/GoCraft-MC/gocraft-api-go
 go 1.26.0
 
 require (
-	github.com/GoCraft-MC/gocraft-abi v0.0.0-20260901110452-4a542296899d
+	github.com/GoCraft-MC/gocraft-abi v0.1.0
 	google.golang.org/protobuf v1.36.11
 )
