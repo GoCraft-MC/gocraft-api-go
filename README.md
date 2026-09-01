@@ -27,12 +27,19 @@ func (p *plugin) OnLoad(context gocraft.Context) error {
 	}); err != nil {
 		return err
 	}
-	// The path, as commands.pb spells it. The executor id the tree assigns is
-	// the tree's business, not this file's.
-	return context.Commands().Register("greet", func(call *gocraft.CommandContext) error {
+	return nil
+}
+
+// Declared once. A build asks for this to put the shape in the bundle, and the
+// host asks for it to bind the handlers — so a command with no handler, or a
+// handler on no command, is not something that can be written.
+func (p *plugin) Commands() *gocraft.CommandSet {
+	set := gocraft.NewCommandSet()
+	set.Command("greet").Permission("example.greet").Runs(func(call *gocraft.CommandContext) error {
 		call.Reply("Hello, " + call.SenderName + "!")
 		return nil
 	})
+	return set
 }
 
 func (p *plugin) OnEnable() error  { return nil }
@@ -59,6 +66,25 @@ was read back here as a 32-bit one, and nothing failed until the coordinate was
 large enough to matter.
 
 Do not edit it. A hand-written event is a second definition of the wire format.
+
+## Commands
+
+```sh
+go run . -gocraft-dump-commands commands.json
+gocraft-cli build -commands commands.json -o my-plugin.gcpkg .
+```
+
+The dump writes the same neutral file `gocraft-apt` writes from javac, and
+`gocraft-cli` turns it into the `commands.pb` every runtime ships. One program
+encodes the wire tree, however many ways there are to declare one — a plugin
+never touches it.
+
+Executor ids are minted by that one program, in declaration order. Nothing here
+has an opinion about them, which is why handlers bind to paths (`shop sell
+<price>`) rather than to numbers.
+
+`go run` rather than the shipped binary, so the dump still works when the plugin
+is cross-compiled for a server that is not this machine.
 
 ## Values
 

@@ -45,6 +45,15 @@ func (s *runtimeState) load(request loadRequest) ([]string, error) {
 	}
 	logger := slog.Default().With("plugin", s.metadata.ID)
 	s.context = newContext(s.metadata, request.dataDirectory, tree, logger)
+	// Before OnLoad, so a plugin that also registers by hand sees a registry
+	// with its declared commands already in it rather than racing them.
+	if declaring, ok := s.implementation.(CommandPlugin); ok {
+		if err := s.context.commands.RegisterSet(declaring.Commands()); err != nil {
+			s.cleanup()
+			s.context = nil
+			return nil, err
+		}
+	}
 	if err := s.call("load", func() error { return s.implementation.OnLoad(s.context) }); err != nil {
 		s.cleanup()
 		s.context = nil

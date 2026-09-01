@@ -64,3 +64,29 @@ func (c *Commands) clear() {
 	c.handlers = make(map[uint32]CommandHandler)
 	c.mu.Unlock()
 }
+
+// RegisterSet binds every path a declaration carries.
+//
+// The bundle's tree is the authority on what exists: this looks each path up in
+// it exactly as Register does, so a set that drifted from the bundle it shipped
+// with fails at load naming the path, rather than becoming a command the client
+// offers and nothing answers.
+//
+// A plugin that implements CommandPlugin has this called for it. It is exported
+// for one that assembles its set some other way.
+func (c *Commands) RegisterSet(set *CommandSet) error {
+	if set == nil {
+		return fmt.Errorf("gocraft: a command set is required")
+	}
+	// Reported before any binding, so a declaration with two mistakes reports
+	// both rather than the first.
+	if _, err := set.Tree(); err != nil {
+		return err
+	}
+	for _, path := range set.Paths() {
+		if err := c.Register(path, set.handlers[path]); err != nil {
+			return err
+		}
+	}
+	return nil
+}

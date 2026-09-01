@@ -19,6 +19,11 @@ func Run(metadata Metadata, implementation Plugin) error {
 	if err := validateMetadata(metadata, implementation); err != nil {
 		return err
 	}
+	// A build asking what commands this has. There is no host, no socket and
+	// nothing to connect to, so this answers and stops.
+	if target, dumping := dumpTarget(os.Args[1:]); dumping {
+		return dumpCommands(implementation, target)
+	}
 	options, err := parseRunnerOptions(os.Args[1:])
 	if err != nil {
 		return err
