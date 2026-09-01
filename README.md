@@ -11,6 +11,52 @@ It depends on the ABI and on nothing else. Not on the server: a plugin that had
 to compile the thing it plugs into would be a cycle, and would tie every plugin
 to the version of the server that happened to be checked out.
 
+## What you have to write
+
+Four things, and the build turns them into one `.gcpkg` file the server reads:
+
+| | |
+| --- | --- |
+| `plugin.toml` | who you are, what you subscribe to, where your binary is |
+| a type implementing `Plugin` | `OnLoad`, `OnEnable`, `OnDisable` |
+| `Commands()`, if you have any | the shape and the handlers, in one statement |
+| a `main` calling `gocraft.Run` | the plugin is its own program |
+
+### plugin.toml
+
+```toml
+id      = "example-go"      # unique; namespace it if you publish
+version = "1.0.0"
+api     = 1                 # gocraft.CurrentVersion
+runtime = "go"
+entry   = "bin/example-go"  # your compiled binary, inside the bundle
+
+[subscribe]
+events = ["player.join", "block.break"]
+perms  = ["example.greet"]  # permissions answered inside each event
+
+[commands]
+tree = "commands.pb"        # only if you declare commands
+```
+
+`[subscribe] events` is not decoration: the host sends you nothing you did not
+ask for, so an event missing here is an event your handler never sees. And
+`perms` is what makes `event.Can("example.greet")` a map lookup instead of a
+round trip while the tick waits.
+
+### Building it
+
+```sh
+go run . -gocraft-dump-commands .gocraft/commands.json   # if you have commands
+go build -o bin/example-go .
+go run github.com/GoCraft-MC/gocraft-cli@latest \
+    build -commands .gocraft/commands.json -o my-plugin.gcpkg .
+```
+
+Drop `my-plugin.gcpkg` in the server's `plugins/` directory. The binary is
+platform-specific, so build it for the server's OS and architecture —
+`GOOS=linux GOARCH=amd64 go build …` if you are not on it.
+
 ## What a plugin looks like
 
 A plugin is its own program. The host starts it, hands it a socket, and speaks
@@ -77,6 +123,9 @@ gocraft-cli build -commands .gocraft/commands.json -o my-plugin.gcpkg .
 A dot directory because `gocraft-cli` skips those when it packs, the way it
 skips `.git`: the dump is a build artefact, not something the server reads.
 
+`go run` rather than the binary you ship, so the dump still works when the
+plugin is cross-compiled for a server that is not this machine.
+
 The dump writes the same neutral file `gocraft-apt` writes from javac, and
 `gocraft-cli` turns it into the `commands.pb` every runtime ships. One program
 encodes the wire tree, however many ways there are to declare one — a plugin
@@ -86,8 +135,35 @@ Executor ids are minted by that one program, in declaration order. Nothing here
 has an opinion about them, which is why handlers bind to paths (`shop sell
 <price>`) rather than to numbers.
 
-`go run` rather than the shipped binary, so the dump still works when the plugin
-is cross-compiled for a server that is not this machine.
+### The value vocabulary
+
+| | what the client is asked for |
+| --- | --- |
+| `Integer(name, Min(…), Max(…))` | a whole number, optionally bounded |
+| `Decimal(name, Min(…), Max(…))` | a number with a fractional part |
+| `Text(name)` | one word |
+| `Greedy(name)` | the rest of the line; nothing may follow it |
+| `Player(name)` | a player, completed by the client |
+| `BlockPos(name)` | a position, with the client's coordinate helpers |
+| `BlockState(name)` | a block, completed from the edition's registry |
+| `Item(name)` | an item, likewise |
+| `Duration(name)` | `30s`, `5m`, `2h` |
+| `OneOf(name, "a", "b")` | one of a fixed list, completed by the client |
+| `Custom(name, "your/type")` | only you can complete it, so it costs a round trip |
+
+Eleven types, and no twelfth. Every one of them renders on Java *and*
+Bedrock without either edition inventing a widget the other lacks — which is why
+adding one is a schema change rather than a plugin's decision.
+
+A range on a type that has none does not compile: only `Integer` and `Decimal`
+take bounds.
+
+### What the builder refuses
+
+Mistakes are collected while you declare and reported together, so a typo does
+not hide the three problems after it. Binding one path twice, guarding a value
+with a permission, declaring one name as two types, a command that runs nothing
+— all of them fail your build, not the server's startup.
 
 ## Values
 
