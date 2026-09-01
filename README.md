@@ -70,9 +70,12 @@ Do not edit it. A hand-written event is a second definition of the wire format.
 ## Commands
 
 ```sh
-go run . -gocraft-dump-commands commands.json
-gocraft-cli build -commands commands.json -o my-plugin.gcpkg .
+go run . -gocraft-dump-commands .gocraft/commands.json
+gocraft-cli build -commands .gocraft/commands.json -o my-plugin.gcpkg .
 ```
+
+A dot directory because `gocraft-cli` skips those when it packs, the way it
+skips `.git`: the dump is a build artefact, not something the server reads.
 
 The dump writes the same neutral file `gocraft-apt` writes from javac, and
 `gocraft-cli` turns it into the `commands.pb` every runtime ships. One program

@@ -14,8 +14,11 @@ import (
 // and run with the flag below, it writes what it declares and exits without
 // connecting to anything.
 //
-//	go run . -gocraft-dump-commands commands.json
-//	gocraft-cli build -commands commands.json -o my-plugin.gcpkg .
+//	go run . -gocraft-dump-commands .gocraft/commands.json
+//	gocraft-cli build -commands .gocraft/commands.json -o my-plugin.gcpkg .
+//
+// A dot directory because gocraft-cli skips those when it packs, the way it
+// skips .git: the dump is a build artefact and has no business inside a bundle.
 //
 // `go run` rather than the shipped binary, so this works when the plugin is
 // cross-compiled for a server that is not this machine.
