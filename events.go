@@ -7,20 +7,18 @@ package gocraft
 // no schema describes: what it means to be an event at all.
 
 // Event is anything the host can dispatch to a handler.
+//
+// It is the payload and nothing else. Refusing what it announced, and reaching
+// the players it is about, are [EventControl] — the second parameter every
+// handler is offered and only some take.
+//
+// That split is not a preference. A plugin-defined event is a struct its author
+// wrote, and nothing can add a method to it, so a verdict carried on the event
+// would work for native events and be impossible for the rest. One shape for
+// both beats two that differ by who wrote the event.
 type Event interface {
 	Type() string
 }
 
-// CancellableEvent is an event a handler may prevent.
-//
-// A separate interface rather than a method on every event, because an
-// observational event simply does not offer it: the tick never waits for one,
-// and a Cancel that silently did nothing would be worse than its absence.
-type CancellableEvent interface {
-	Event
-	Cancel()
-	Cancelled() bool
-}
-
 // EventHandler receives an event by name, for a type this build does not know.
-type EventHandler func(Event)
+type EventHandler func(Event, EventControl)

@@ -1,7 +1,12 @@
 // Package gocraft is the public API used by native Go plugins.
 package gocraft
 
-import "log/slog"
+import (
+	"fmt"
+	"log/slog"
+
+	abi "github.com/GoCraft-MC/gocraft-abi/abi/v1"
+)
 
 // CurrentVersion is the Go Plugin API version supported by this server.
 const CurrentVersion uint32 = 1
@@ -31,11 +36,48 @@ type Context interface {
 	Scheduler() *Scheduler
 }
 
-// Player is a protocol-independent player reference.
-type Player struct {
+// PlayerRef is a player, and what a handler acts on them through.
+//
+// Identity and verbs on one type, because an effect belongs to the thing it
+// happens to. The alternative — a plain value plus a channel that takes it as
+// an argument — puts every future verb on the channel, and the channel grows
+// with the vocabulary instead of the vocabulary growing on its own.
+//
+// **Held by pointer, always.** It carries a link to the dispatch it came from,
+// so comparing two of them with == compares that link as well: two references
+// to the same player from two events would come out unequal, silently, and Go
+// has no way to say otherwise. Compare UUID, which is what identity means here.
+//
+// Do not keep one. The fields are a snapshot the server has already moved past,
+// and acting through a handle after its event was answered is an error rather
+// than an effect nobody receives.
+type PlayerRef struct {
 	UUID     [16]byte
 	Username string
 	Edition  string
+
+	// sink is the dispatch this handle can act through, nil for one decoded
+	// outside a dispatch.
+	sink *effects
+}
+
+// SendMessage delivers one line to this player.
+//
+// Batched into the verdict with every other effect, so a handler that sends
+// three lines still costs one round trip, and applied by the host on its own
+// tick — never from the goroutine a handler runs on, which is in another
+// process from the world it would be writing to.
+//
+// A player who logged out between the event and that tick is dropped without a
+// word, which is common enough not to be worth reporting.
+func (p *PlayerRef) SendMessage(message string) error {
+	if p == nil {
+		return fmt.Errorf("gocraft: no player to send %q to", message)
+	}
+	return p.sink.add(abi.HostCall{
+		Type:   EffectMessage,
+		Fields: []Value{Bytes(p.UUID[:]), String(message)},
+	})
 }
 
 // BlockPos is an integer position in a world.

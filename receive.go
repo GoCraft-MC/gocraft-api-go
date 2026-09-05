@@ -27,7 +27,6 @@ type CustomDispatch struct {
 	eventType string
 	fields    []Value
 	mutations []abi.Mutation
-	cancelled bool
 }
 
 // customFrom reads a dispatched event this build has no generated layout for.
@@ -44,17 +43,6 @@ func customFrom(incoming *abi.Event) (Event, error) {
 
 // Type is the namespaced name, as [[events.provides]] spells it.
 func (e *CustomDispatch) Type() string { return e.eventType }
-
-// Cancel asks the emitter to abandon what the event announced.
-//
-// Always available, even on an event the provider declared uncancellable: the
-// host arbitrates, because it is the only party that has the definition. It
-// logs and continues rather than obeying, so cancelling one is a mistake that
-// is visible instead of a silent no-op here.
-func (e *CustomDispatch) Cancel() { e.cancelled = true }
-
-// Cancelled reports whether this handler, or one before it, cancelled.
-func (e *CustomDispatch) Cancelled() bool { return e.cancelled }
 
 // Len is how many fields arrived, which is how many the provider declared.
 func (e *CustomDispatch) Len() int { return len(e.fields) }
@@ -163,10 +151,11 @@ func (e *CustomDispatch) Into(target CustomEvent) error {
 	return target.SetFields(e.fields)
 }
 
-// verdict is what the dispatch loop sends back for this event.
-func (e *CustomDispatch) verdict() abi.Verdict {
-	return abi.Verdict{Cancelled: e.cancelled, Mutations: e.mutations}
-}
+// EffectMessage is the only host call a plugin can make today.
+//
+// Re-exported from the contract, like Value, so an author never imports it and
+// the string a subscriber asks with is the string the host dispatches on.
+const EffectMessage = abi.EffectMessage
 
 // OnCustom registers a handler for a plugin-defined event.
 //
@@ -175,11 +164,11 @@ func (e *CustomDispatch) verdict() abi.Verdict {
 // but the host refuses at boot a subscription to a type no scanned manifest
 // provides, so a typo is a startup failure rather than a handler that never
 // fires.
-func (e *Events) OnCustom(eventType string, handler func(*CustomDispatch)) error {
+func (e *Events) OnCustom(eventType string, handler func(*CustomDispatch, EventControl)) error {
 	if handler == nil {
 		return fmt.Errorf("gocraft: %s needs a handler", eventType)
 	}
-	return e.On(eventType, func(event Event) {
+	return e.On(eventType, func(event Event, answer EventControl) {
 		custom, ok := event.(*CustomDispatch)
 		if !ok {
 			// A native event registered under a plugin-defined name, which the
@@ -189,6 +178,6 @@ func (e *Events) OnCustom(eventType string, handler func(*CustomDispatch)) error
 				"event", event.Type())
 			return
 		}
-		handler(custom)
+		handler(custom, answer)
 	})
 }

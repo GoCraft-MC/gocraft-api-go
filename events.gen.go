@@ -24,7 +24,7 @@ const (
 // shares one budget for the whole event, so a handler that takes its
 // time is taking it from the others.
 type BlockBreakEvent struct {
-	Player Player
+	Player *PlayerRef
 	Pos    BlockPos
 	Block  Block
 	Tool   string
@@ -34,8 +34,6 @@ type BlockBreakEvent struct {
 	// rather than as a map to rummage through, and because a handler
 	// that could write to it would be answering its own question.
 	permissions map[string]bool
-
-	cancelled bool
 }
 
 func (*BlockBreakEvent) Type() string { return EventBlockBreak }
@@ -50,29 +48,29 @@ func (*BlockBreakEvent) Type() string { return EventBlockBreak }
 // never asked about it. That is a manifest bug, not a denial.
 func (e *BlockBreakEvent) Can(node string) bool { return e.permissions[node] }
 
-// Cancel prevents the action. The host decides the outcome once every
-// subscriber has answered or the budget has run out.
-func (e *BlockBreakEvent) Cancel() { e.cancelled = true }
-
-func (e *BlockBreakEvent) Cancelled() bool { return e.cancelled }
-
 // OnBlockBreak registers a handler for block.break.
 //
 // Typed, so there is no event name to misspell: the parameter is the
 // subscription. On accepts a name for anything this build does not know.
-func (e *Events) OnBlockBreak(handler func(*BlockBreakEvent)) error {
-	return e.On(EventBlockBreak, func(event Event) {
+//
+// The control is what a handler refuses with, and where it reaches a
+// player the event did not hand it. A handler that only watches may
+// ignore it; it is a parameter rather than a method on the event because
+// a plugin-defined event is a struct its author wrote, and one shape for
+// both beats two that differ by who wrote the event.
+func (e *Events) OnBlockBreak(handler func(*BlockBreakEvent, EventControl)) error {
+	return e.On(EventBlockBreak, func(event Event, control EventControl) {
 		if typed, ok := event.(*BlockBreakEvent); ok {
-			handler(typed)
+			handler(typed, control)
 		}
 	})
 }
 
-func blockBreakFrom(fields []abi.Value) (*BlockBreakEvent, error) {
+func blockBreakFrom(fields []abi.Value, sink *effects) (*BlockBreakEvent, error) {
 	if len(fields) != 5 {
 		return nil, fmt.Errorf("gocraft: block.break has %d fields, want 5", len(fields))
 	}
-	player, err := playerFrom(fields[0])
+	player, err := playerFrom(fields[0], sink)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +98,7 @@ func blockBreakFrom(fields []abi.Value) (*BlockBreakEvent, error) {
 // Observational: the tick does not wait, and nothing a handler does
 // can prevent what already happened.
 type PlayerJoinEvent struct {
-	Player Player
+	Player *PlayerRef
 
 	// permissions is what the host resolved before dispatch. Unexported
 	// because the schema says an injected field surfaces as a query
@@ -125,19 +123,25 @@ func (e *PlayerJoinEvent) Can(node string) bool { return e.permissions[node] }
 //
 // Typed, so there is no event name to misspell: the parameter is the
 // subscription. On accepts a name for anything this build does not know.
-func (e *Events) OnPlayerJoin(handler func(*PlayerJoinEvent)) error {
-	return e.On(EventPlayerJoin, func(event Event) {
+//
+// The control is what a handler refuses with, and where it reaches a
+// player the event did not hand it. A handler that only watches may
+// ignore it; it is a parameter rather than a method on the event because
+// a plugin-defined event is a struct its author wrote, and one shape for
+// both beats two that differ by who wrote the event.
+func (e *Events) OnPlayerJoin(handler func(*PlayerJoinEvent, EventControl)) error {
+	return e.On(EventPlayerJoin, func(event Event, control EventControl) {
 		if typed, ok := event.(*PlayerJoinEvent); ok {
-			handler(typed)
+			handler(typed, control)
 		}
 	})
 }
 
-func playerJoinFrom(fields []abi.Value) (*PlayerJoinEvent, error) {
+func playerJoinFrom(fields []abi.Value, sink *effects) (*PlayerJoinEvent, error) {
 	if len(fields) != 2 {
 		return nil, fmt.Errorf("gocraft: player.join has %d fields, want 2", len(fields))
 	}
-	player, err := playerFrom(fields[0])
+	player, err := playerFrom(fields[0], sink)
 	if err != nil {
 		return nil, err
 	}
@@ -156,15 +160,15 @@ func playerJoinFrom(fields []abi.Value) (*PlayerJoinEvent, error) {
 // rather than being refused. Which layout it should be read against is a
 // fact this build cannot have: it belongs to the manifest of whichever
 // plugin provides it.
-func eventFrom(incoming *abi.Event) (Event, error) {
+func eventFrom(incoming *abi.Event, sink *effects) (Event, error) {
 	if incoming == nil {
 		return nil, fmt.Errorf("gocraft: missing event")
 	}
 	switch incoming.Type {
 	case EventBlockBreak:
-		return blockBreakFrom(incoming.Fields)
+		return blockBreakFrom(incoming.Fields, sink)
 	case EventPlayerJoin:
-		return playerJoinFrom(incoming.Fields)
+		return playerJoinFrom(incoming.Fields, sink)
 	default:
 		return customFrom(incoming)
 	}

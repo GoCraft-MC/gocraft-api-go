@@ -6,25 +6,24 @@ import (
 	abi "github.com/GoCraft-MC/gocraft-abi/abi/v1"
 )
 
-func playerFrom(value abi.Value) (Player, error) {
+func playerFrom(value abi.Value, sink *effects) (*PlayerRef, error) {
 	items, err := listOf(value, 3, "player")
 	if err != nil {
-		return Player{}, err
+		return nil, err
 	}
 	if items[0].Kind != abi.ValueBytes || len(items[0].Bytes) != 16 {
-		return Player{}, fmt.Errorf("gocraft: player uuid is not 16 bytes")
+		return nil, fmt.Errorf("gocraft: player uuid is not 16 bytes")
 	}
 	username, err := stringFrom(items[1], "player username")
 	if err != nil {
-		return Player{}, err
+		return nil, err
 	}
 	edition, err := stringFrom(items[2], "player edition")
 	if err != nil {
-		return Player{}, err
+		return nil, err
 	}
-	var player Player
+	player := &PlayerRef{Username: username, Edition: edition, sink: sink}
 	copy(player.UUID[:], items[0].Bytes)
-	player.Username, player.Edition = username, edition
 	return player, nil
 }
 
