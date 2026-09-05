@@ -20,3 +20,19 @@ func Bytes(value []byte) Value   { return abi.Bytes(value) }
 // List nests values, which is how a field declared []Tier or a record with
 // fields of its own reaches the wire.
 func List(values ...Value) Value { return abi.List(values...) }
+
+// ValueKind says which of a Value's fields is the meaningful one.
+type ValueKind = abi.ValueKind
+
+// The kinds, re-exported for the same reason as the constructors: reading a
+// value means comparing against one, and an author asked to import the contract
+// for that would be importing it for everything eventually.
+const (
+	ValueInvalid = abi.ValueInvalid
+	ValueBool    = abi.ValueBool
+	ValueInt64   = abi.ValueInt64
+	ValueDouble  = abi.ValueDouble
+	ValueString  = abi.ValueString
+	ValueBytes   = abi.ValueBytes
+	ValueList    = abi.ValueList
+)
