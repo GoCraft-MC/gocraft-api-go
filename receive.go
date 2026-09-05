@@ -162,6 +162,31 @@ func (e *CustomDispatch) SetAt(path []uint32, value Value) error {
 	return nil
 }
 
+// Update records everything a handler changed, however deep.
+//
+// Given the event as its handler left it, this works out what moved and records
+// one mutation per leaf that did — so a subscriber that discounted one line of
+// a purchase sends that line's price, not the list it sits in. The host applies
+// them in order into the state the next subscriber sees, and replacing a list
+// of a thousand entries because one price moved would make every later
+// subscriber pay for it.
+//
+// This is what generated code calls once a handler has returned. By hand, Set
+// and SetAt say the same thing more directly; this exists because generated
+// code cannot know which field an author touched without asking.
+func (e *CustomDispatch) Update(fields []Value) error {
+	if len(fields) != len(e.fields) {
+		return fmt.Errorf("gocraft: %s: %d fields back, %d went out",
+			e.eventType, len(fields), len(e.fields))
+	}
+	for _, mutation := range abi.Diff(e.fields, fields) {
+		if err := e.SetAt(mutation.Path, mutation.Value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Into reads the payload into a struct, using the same SetFields an emitter
 // implements. Read-only: writes go through Set and SetAt.
 func (e *CustomDispatch) Into(target CustomEvent) error {
