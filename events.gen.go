@@ -150,9 +150,12 @@ func playerJoinFrom(fields []abi.Value) (*PlayerJoinEvent, error) {
 
 // eventFrom reads one dispatched event.
 //
-// An event this build does not know is refused rather than guessed at: the
-// payload is positional, so reading it against the wrong layout would
-// produce a plausible event rather than an error.
+// A native event is decoded against the layout generated with it. Anything
+// else is plugin-defined by construction — a provided type must contain a
+// slash and no native name has one — so it goes to the positional reader
+// rather than being refused. Which layout it should be read against is a
+// fact this build cannot have: it belongs to the manifest of whichever
+// plugin provides it.
 func eventFrom(incoming *abi.Event) (Event, error) {
 	if incoming == nil {
 		return nil, fmt.Errorf("gocraft: missing event")
@@ -163,6 +166,6 @@ func eventFrom(incoming *abi.Event) (Event, error) {
 	case EventPlayerJoin:
 		return playerJoinFrom(incoming.Fields)
 	default:
-		return nil, fmt.Errorf("gocraft: unsupported event %s", incoming.Type)
+		return customFrom(incoming)
 	}
 }
