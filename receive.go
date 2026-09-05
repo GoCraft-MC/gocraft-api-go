@@ -27,6 +27,11 @@ type CustomDispatch struct {
 	eventType string
 	fields    []Value
 	mutations []abi.Mutation
+
+	// sink is the dispatch a handle read out of this payload acts through. A
+	// plugin-defined event may carry a PlayerRef, and a subscriber handed one
+	// it cannot answer would be handed an identity rather than a handle.
+	sink *effects
 }
 
 // customFrom reads a dispatched event this build has no generated layout for.
@@ -34,11 +39,11 @@ type CustomDispatch struct {
 // Called by the generated eventFrom for anything that is not native. The type
 // is carried rather than resolved: the host numbered it from the manifests it
 // scanned, and a subscriber matches on the name it subscribed with.
-func customFrom(incoming *abi.Event) (Event, error) {
+func customFrom(incoming *abi.Event, sink *effects) (Event, error) {
 	if incoming.Type == "" {
 		return nil, fmt.Errorf("gocraft: dispatched event has no type")
 	}
-	return &CustomDispatch{eventType: incoming.Type, fields: incoming.Fields}, nil
+	return &CustomDispatch{eventType: incoming.Type, fields: incoming.Fields, sink: sink}, nil
 }
 
 // Type is the namespaced name, as [[events.provides]] spells it.
@@ -99,6 +104,24 @@ func (e *CustomDispatch) Bytes(index int) ([]byte, bool) {
 		return nil, false
 	}
 	return value.Bytes, true
+}
+
+// Player reads a field the provider declared as a PlayerRef, bound to this
+// dispatch.
+//
+// The point of PlayerRef being in the manifest vocabulary rather than being
+// sixteen bytes: a subscriber is handed somebody it can answer. Generated code
+// reads a field this way; by hand it is the same call.
+func (e *CustomDispatch) Player(index int) (*PlayerRef, bool) {
+	value, ok := e.Field(index)
+	if !ok {
+		return nil, false
+	}
+	player, err := playerFrom(value, e.sink)
+	if err != nil {
+		return nil, false
+	}
+	return player, true
 }
 
 // Set replaces a whole field.

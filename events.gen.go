@@ -170,6 +170,6 @@ func eventFrom(incoming *abi.Event, sink *effects) (Event, error) {
 	case EventPlayerJoin:
 		return playerJoinFrom(incoming.Fields, sink)
 	default:
-		return customFrom(incoming)
+		return customFrom(incoming, sink)
 	}
 }
