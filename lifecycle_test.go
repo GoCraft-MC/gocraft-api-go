@@ -15,7 +15,7 @@ func (p *lifecyclePlugin) OnLoad(context Context) error {
 	p.loads++
 	p.context = context
 	if p.loadErr == nil {
-		return context.Events().OnPlayerJoin(func(*PlayerJoinEvent) {})
+		return context.Events().OnPlayerJoin(func(*PlayerJoinEvent, EventControl) {})
 	}
 	return p.loadErr
 }

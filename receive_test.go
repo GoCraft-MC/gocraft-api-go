@@ -53,15 +53,12 @@ func TestSetRecordsOneMutationEach(t *testing.T) {
 	if err := event.SetAt([]uint32{1, 1}, Double(3.50)); err != nil {
 		t.Fatalf("SetAt([1 1], 3.50) = %v", err)
 	}
-	verdict := event.verdict()
-	if len(verdict.Mutations) != 2 {
-		t.Fatalf("verdict has %d mutations, want 2", len(verdict.Mutations))
+	mutations := event.mutations
+	if len(mutations) != 2 {
+		t.Fatalf("%d mutations recorded, want 2", len(mutations))
 	}
-	if got := verdict.Mutations[1].Path; len(got) != 2 || got[0] != 1 || got[1] != 1 {
+	if got := mutations[1].Path; len(got) != 2 || got[0] != 1 || got[1] != 1 {
 		t.Fatalf("second mutation path = %v, want [1 1]", got)
-	}
-	if verdict.Cancelled {
-		t.Fatal("verdict is cancelled and nothing cancelled it")
 	}
 }
 
@@ -95,7 +92,7 @@ func TestSetRefusesAPathThePayloadCannotTake(t *testing.T) {
 	if err := event.SetAt(nil, Double(1)); err == nil {
 		t.Fatal("a write with no path was accepted")
 	}
-	if len(event.verdict().Mutations) != 0 {
+	if len(event.mutations) != 0 {
 		t.Fatal("a refused write was recorded anyway")
 	}
 }
@@ -129,9 +126,9 @@ func TestIntoRefusesAnotherEventsType(t *testing.T) {
 func TestOnCustomReceivesTheDispatchedEvent(t *testing.T) {
 	events := newEvents(slog.Default(), "fr.oreo.shop", nil, nil)
 	var seen *CustomDispatch
-	if err := events.OnCustom("fr.oreo.shop/purchase", func(event *CustomDispatch) {
+	if err := events.OnCustom("fr.oreo.shop/purchase", func(event *CustomDispatch, control EventControl) {
 		seen = event
-		event.Cancel()
+		control.Cancel()
 	}); err != nil {
 		t.Fatalf("OnCustom = %v", err)
 	}
@@ -139,11 +136,68 @@ func TestOnCustomReceivesTheDispatchedEvent(t *testing.T) {
 		t.Fatal("a subscription with no handler was accepted")
 	}
 	event := anIncomingPurchase()
-	events.dispatch(event)
+	answer := &control{}
+	events.dispatch(event, answer)
 	if seen != event {
 		t.Fatalf("handler saw %p, dispatched %p", seen, event)
 	}
-	if !event.verdict().Cancelled {
+	if !answer.verdict().Cancelled {
 		t.Fatal("Cancel did not reach the verdict")
+	}
+}
+
+// An effect belongs to the thing it happens to: the handle carries the verb,
+// and the control is only where a handle comes from when the event did not
+// hand one over.
+func TestAPlayerHandleSendsThroughItsDispatch(t *testing.T) {
+	answer := &control{}
+	uuid := make([]byte, 16)
+	for index := range uuid {
+		uuid[index] = byte(index)
+	}
+	player := answer.Player(uuid)
+	if player == nil {
+		t.Fatal("a 16-byte uuid produced no handle")
+	}
+	if err := player.SendMessage("10% off applied."); err != nil {
+		t.Fatalf("SendMessage = %v", err)
+	}
+	if err := player.SendMessage("and a second line"); err != nil {
+		t.Fatal(err)
+	}
+	verdict := answer.verdict()
+	if len(verdict.Effects) != 2 {
+		t.Fatalf("verdict carries %d effects, want 2", len(verdict.Effects))
+	}
+	first := verdict.Effects[0]
+	if first.Type != EffectMessage || len(first.Fields) != 2 {
+		t.Fatalf("effect = %+v", first)
+	}
+	if first.Fields[1].String != "10% off applied." {
+		t.Fatalf("message = %q", first.Fields[1].String)
+	}
+}
+
+func TestControlRefusesSomethingThatIsNotAUUID(t *testing.T) {
+	answer := &control{}
+	if handle := answer.Player([]byte("oreo")); handle != nil {
+		t.Fatal("a four-byte uuid produced a handle")
+	}
+	if err := answer.Player([]byte("oreo")).SendMessage("hello"); err == nil {
+		t.Fatal("sending through a nil handle was accepted")
+	}
+	if len(answer.verdict().Effects) != 0 {
+		t.Fatal("a refused effect was queued anyway")
+	}
+}
+
+// A handle kept past its dispatch writes into a verdict already sent. Saying so
+// beats an effect that goes nowhere, which is the failure mode nothing reveals.
+func TestAStaleHandleSaysSo(t *testing.T) {
+	answer := &control{}
+	player := answer.Player(make([]byte, 16))
+	answer.verdict()
+	if err := player.SendMessage("too late"); err == nil {
+		t.Fatal("a handle kept past its dispatch still queued an effect")
 	}
 }

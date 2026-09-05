@@ -6,30 +6,25 @@ import (
 	abi "github.com/GoCraft-MC/gocraft-abi/abi/v1"
 )
 
-func TestBlockBreakEventCancellation(t *testing.T) {
+// The event carries the payload and nothing else. Refusing what it announced
+// is the control's, so that one shape serves a generated event and a struct a
+// plugin author wrote — nothing can add a method to the latter.
+func TestAnEventCarriesOnlyItsPayload(t *testing.T) {
 	event := &BlockBreakEvent{
-		Player: Player{Username: "Elias"},
+		Player: &PlayerRef{Username: "Elias"},
 		Pos:    BlockPos{X: 4, Y: 64, Z: -2},
 		Block:  Block{ID: "minecraft:stone"},
 	}
 	if event.Type() != EventBlockBreak {
 		t.Fatalf("Type() = %q", event.Type())
 	}
-	if event.Cancelled() {
-		t.Fatal("new event is cancelled")
+	answer := &control{}
+	if answer.Cancelled() {
+		t.Fatal("a fresh control is cancelled")
 	}
-	event.Cancel()
-	if !event.Cancelled() {
+	answer.Cancel()
+	if !answer.Cancelled() {
 		t.Fatal("Cancel() did not persist")
-	}
-}
-
-// An observational event offers no way to cancel it, because the tick never
-// waits for one and a Cancel that did nothing would be worse than its absence.
-func TestPlayerJoinEventIsNotCancellable(t *testing.T) {
-	var event Event = &PlayerJoinEvent{Player: Player{Username: "Elias"}}
-	if _, cancellable := event.(CancellableEvent); cancellable {
-		t.Fatal("an observational event offered cancellation")
 	}
 }
 
@@ -46,7 +41,7 @@ func TestBlockBreakDecodesItsPositionalPayload(t *testing.T) {
 		abi.String("minecraft:diamond_pickaxe"),
 		abi.List(abi.List(abi.String("spawn.bypass"), abi.Bool(true))),
 	}
-	decoded, err := eventFrom(&abi.Event{Type: EventBlockBreak, Fields: fields})
+	decoded, err := eventFrom(&abi.Event{Type: EventBlockBreak, Fields: fields}, &effects{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,13 +81,13 @@ func TestBlockPositionKeepsSixtyFourBits(t *testing.T) {
 }
 
 func TestEventFromRefusesWhatItCannotRead(t *testing.T) {
-	if _, err := eventFrom(nil); err == nil {
+	if _, err := eventFrom(nil, &effects{}); err == nil {
 		t.Fatal("a missing event decoded")
 	}
-	if _, err := eventFrom(&abi.Event{}); err == nil {
+	if _, err := eventFrom(&abi.Event{}, &effects{}); err == nil {
 		t.Fatal("an event with no type decoded")
 	}
-	if _, err := eventFrom(&abi.Event{Type: EventPlayerJoin}); err == nil {
+	if _, err := eventFrom(&abi.Event{Type: EventPlayerJoin}, &effects{}); err == nil {
 		t.Fatal("a payload of the wrong length decoded")
 	}
 }
@@ -106,9 +101,9 @@ func TestEventFromReadsAnUnknownTypePositionally(t *testing.T) {
 		Type:   "fr.oreo.shop/purchase",
 		TypeID: 3,
 		Fields: []abi.Value{abi.String("mika"), abi.Double(1500)},
-	})
+	}, &effects{})
 	if err != nil {
-		t.Fatalf("eventFrom(a plugin-defined event) = %v", err)
+		t.Fatalf("eventFrom(a plugin-defined event, &effects{}) = %v", err)
 	}
 	custom, ok := event.(*CustomDispatch)
 	if !ok {

@@ -16,10 +16,10 @@ type sessionPlugin struct {
 }
 
 func (p *sessionPlugin) OnLoad(context Context) error {
-	return context.Events().OnBlockBreak(func(event *BlockBreakEvent) {
+	return context.Events().OnBlockBreak(func(event *BlockBreakEvent, control EventControl) {
 		close(p.entered)
 		<-p.release
-		event.Cancel()
+		control.Cancel()
 	})
 }
 
