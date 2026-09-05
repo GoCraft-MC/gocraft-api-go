@@ -61,6 +61,22 @@ type PlayerRef struct {
 	sink *effects
 }
 
+// Value is this player as an event carries one: uuid, username, edition.
+//
+// Here rather than written out by whoever needs it: the shape has to match what
+// the host reads back, and code generators were spelling it out themselves. The
+// Java handle answers the same question the same way.
+//
+// A nil handle is an empty list, which is what the host writes when there is no
+// acting player — the wire has no null and a fixed layout would have to
+// special-case one anyway.
+func (p *PlayerRef) Value() Value {
+	if p == nil {
+		return List()
+	}
+	return List(Bytes(p.UUID[:]), String(p.Username), String(p.Edition))
+}
+
 // SendMessage delivers one line to this player.
 //
 // Batched into the verdict with every other effect, so a handler that sends

@@ -14,11 +14,11 @@ import (
 // this reads positionally, and says so, rather than pretending to a type it
 // would be decoding on faith.
 //
-// Writes are recorded rather than diffed. A subscriber changes at most a field
-// or two out of an event that may carry a list of a thousand records; asking
-// what changed by comparing the whole payload afterwards would pay for the
-// whole event on every dispatch, and lose the deep-path granularity that lets
-// a list element be written without replacing the list.
+// A write says where it lands. Set and SetAt record one, which is what an
+// author writing a handler by hand does; Update takes the event back as its
+// handler left it and works out the difference, which is what generated code
+// does because it cannot know which field was touched. Both end as mutations
+// at a path, so a list element can be written without replacing the list.
 //
 // Into reads the payload into a struct for an author who would rather have
 // one. It is deliberately read-only: a struct the SDK handed out has no way to
@@ -179,11 +179,12 @@ func (e *CustomDispatch) Update(fields []Value) error {
 		return fmt.Errorf("gocraft: %s: %d fields back, %d went out",
 			e.eventType, len(fields), len(e.fields))
 	}
-	for _, mutation := range abi.Diff(e.fields, fields) {
-		if err := e.SetAt(mutation.Path, mutation.Value); err != nil {
-			return err
-		}
-	}
+	// Recorded, not re-applied. SetAt exists to validate a path an author
+	// wrote; these came from comparing the payload against itself, so they are
+	// valid by construction — and replaying them would copy the whole field
+	// list once per mutation to land back exactly where fields already is.
+	e.mutations = append(e.mutations, abi.Diff(e.fields, fields)...)
+	e.fields = fields
 	return nil
 }
 
