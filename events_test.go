@@ -89,10 +89,35 @@ func TestEventFromRefusesWhatItCannotRead(t *testing.T) {
 	if _, err := eventFrom(nil); err == nil {
 		t.Fatal("a missing event decoded")
 	}
-	if _, err := eventFrom(&abi.Event{Type: "shop.purchase"}); err == nil {
-		t.Fatal("an unknown event decoded")
+	if _, err := eventFrom(&abi.Event{}); err == nil {
+		t.Fatal("an event with no type decoded")
 	}
 	if _, err := eventFrom(&abi.Event{Type: EventPlayerJoin}); err == nil {
 		t.Fatal("a payload of the wrong length decoded")
+	}
+}
+
+// Anything that is not native is plugin-defined, and read positionally rather
+// than refused. The name is carried through unresolved: which layout it should
+// be read against belongs to the manifest of the plugin that provides it, not
+// to this build.
+func TestEventFromReadsAnUnknownTypePositionally(t *testing.T) {
+	event, err := eventFrom(&abi.Event{
+		Type:   "fr.oreo.shop/purchase",
+		TypeID: 3,
+		Fields: []abi.Value{abi.String("mika"), abi.Double(1500)},
+	})
+	if err != nil {
+		t.Fatalf("eventFrom(a plugin-defined event) = %v", err)
+	}
+	custom, ok := event.(*CustomDispatch)
+	if !ok {
+		t.Fatalf("eventFrom returned %T, want *CustomDispatch", event)
+	}
+	if custom.Type() != "fr.oreo.shop/purchase" {
+		t.Fatalf("Type() = %q", custom.Type())
+	}
+	if price, ok := custom.Decimal(1); !ok || price != 1500 {
+		t.Fatalf("Decimal(1) = %v, %v", price, ok)
 	}
 }
