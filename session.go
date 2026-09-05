@@ -9,6 +9,9 @@ import (
 )
 
 func serve(codec *ipc.Codec, state *runtimeState) error {
+	publisher := newEmitter(codec)
+	state.publisher = publisher
+	defer publisher.shutdown()
 	session := &pluginSession{codec: codec, state: state}
 	work := make(chan *wire.Envelope, 8)
 	stopped := make(chan struct{})
@@ -41,6 +44,11 @@ func serve(codec *ipc.Codec, state *runtimeState) error {
 				stop()
 				return err
 			}
+		case *wire.Envelope_Emitted:
+			// The answer to an emission this plugin published. Delivered on the
+			// read loop rather than queued behind the work channel: the caller
+			// waiting on it may well be what is occupying that worker.
+			publisher.deliver(envelope.GetSeq(), envelope.GetEmitted())
 		case *wire.Envelope_Ready:
 			// The host is now accepting players; no plugin callback is needed.
 		case *wire.Envelope_Shutdown:

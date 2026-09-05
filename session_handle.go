@@ -33,12 +33,35 @@ func (s *pluginSession) handle(envelope *wire.Envelope) {
 	}
 }
 
+// eventBindings turns the host's id table into the lookup an emission needs.
+//
+// A malformed entry is dropped rather than failing the load: the plugin can
+// still subscribe and run, and an emit that finds no id says so by name. A load
+// refused over an event the plugin may never publish would be the harsher
+// answer to the smaller problem.
+func eventBindings(bindings []*wire.EventBinding) map[string]uint32 {
+	if len(bindings) == 0 {
+		return nil
+	}
+	decoded, err := ipc.DecodeEventBindings(bindings)
+	if err != nil {
+		slog.Error("plugin event bindings rejected", "err", err)
+		return nil
+	}
+	table := make(map[string]uint32, len(decoded))
+	for _, binding := range decoded {
+		table[binding.Type] = binding.TypeID
+	}
+	return table
+}
+
 func (s *pluginSession) handleLoad(seq uint64, load *wire.Load) {
 	events, err := s.state.load(loadRequest{
 		pluginID:      load.GetPluginId(),
 		bundlePath:    load.GetBundlePath(),
 		dataDirectory: load.GetDataDirectory(),
 		commandTree:   load.GetCommandTree(),
+		eventTypes:    eventBindings(load.GetEventTypes()),
 	})
 	if err != nil {
 		s.send(&wire.Envelope{Seq: seq, Body: &wire.Envelope_Fail{Fail: &wire.Fail{

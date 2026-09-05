@@ -13,7 +13,7 @@ func testLogger(output *bytes.Buffer) *slog.Logger {
 
 func TestEventsDispatchInOrderAndRecoverPanics(t *testing.T) {
 	var output bytes.Buffer
-	events := newEvents(testLogger(&output))
+	events := newEvents(testLogger(&output), "fr.oreo.hello", nil, nil)
 	called := 0
 	if err := events.OnBlockBreak(func(*BlockBreakEvent) {
 		called++
@@ -42,7 +42,7 @@ func TestEventsDispatchInOrderAndRecoverPanics(t *testing.T) {
 }
 
 func TestEventsClearPreventsFutureCallbacks(t *testing.T) {
-	events := newEvents(slog.Default())
+	events := newEvents(slog.Default(), "fr.oreo.hello", nil, nil)
 	called := false
 	if err := events.OnPlayerJoin(func(*PlayerJoinEvent) { called = true }); err != nil {
 		t.Fatal(err)
