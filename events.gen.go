@@ -179,6 +179,96 @@ func playerJoinFrom(fields []abi.Value, sink *effects) (*PlayerJoinEvent, error)
 	return &PlayerJoinEvent{Player: player, permissions: permissions}, nil
 }
 
+// BlockPlaceEvent is the block.place event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type BlockPlaceEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Pos BlockPos
+	// Snapshot: changing this field does not change the server.
+	Block Block
+	// Snapshot: changing this field does not change the server.
+	Replaced Block
+	// Snapshot: changing this field does not change the server.
+	Dimension int64
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*BlockPlaceEvent) Type() string { return EventBlockPlace }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *BlockPlaceEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnBlockPlace registers a handler for block.place.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnBlockPlace(handler func(*BlockPlaceEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventBlockPlace, func(event Event, control EventControl) {
+		if typed, ok := event.(*BlockPlaceEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func blockPlaceFrom(fields []abi.Value, sink *effects) (*BlockPlaceEvent, error) {
+	if len(fields) != 6 {
+		return nil, fmt.Errorf("gocraft: block.place has %d fields, want 6", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	pos, err := positionFrom(fields[1])
+	if err != nil {
+		return nil, err
+	}
+	block, err := blockFrom(fields[2])
+	if err != nil {
+		return nil, err
+	}
+	replaced, err := blockFrom(fields[3])
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[4], "block.place dimension")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[5])
+	if err != nil {
+		return nil, err
+	}
+	return &BlockPlaceEvent{Player: player, Pos: pos, Block: block, Replaced: replaced, Dimension: dimension, permissions: permissions}, nil
+}
+
+// PlayerQuitEvent is the player.quit event.
+//
+// Observational: the tick does not wait, and nothing a handler does
+// can prevent what already happened.
+type PlayerQuitEvent struct {
+	// Snapshot: changing this field does not change the server.
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
