@@ -629,6 +629,96 @@ type PlayerTeleportEvent struct {
 	// Snapshot: changing this field does not change the server.
 	Player *PlayerRef
 	// Snapshot: changing this field does not change the server.
+	FromX float64
+	// Snapshot: changing this field does not change the server.
+	FromY float64
+	// Snapshot: changing this field does not change the server.
+	FromZ float64
+	// Mutable: changes are returned to the host after dispatch.
+	X float64
+	// Mutable: changes are returned to the host after dispatch.
+	Y float64
+	// Mutable: changes are returned to the host after dispatch.
+	Z float64
+	// Snapshot: changing this field does not change the server.
+	Dimension int64
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*PlayerTeleportEvent) Type() string { return EventPlayerTeleport }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *PlayerTeleportEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnPlayerTeleport registers a handler for player.teleport.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnPlayerTeleport(handler func(*PlayerTeleportEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerTeleport, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerTeleportEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func playerTeleportFrom(fields []abi.Value, sink *effects) (*PlayerTeleportEvent, error) {
+	if len(fields) != 9 {
+		return nil, fmt.Errorf("gocraft: player.teleport has %d fields, want 9", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	fromX, err := doubleFrom(fields[1], "player.teleport from_x")
+	if err != nil {
+		return nil, err
+	}
+	fromY, err := doubleFrom(fields[2], "player.teleport from_y")
+	if err != nil {
+		return nil, err
+	}
+	fromZ, err := doubleFrom(fields[3], "player.teleport from_z")
+	if err != nil {
+		return nil, err
+	}
+	x, err := doubleFrom(fields[4], "player.teleport x")
+	if err != nil {
+		return nil, err
+	}
+	y, err := doubleFrom(fields[5], "player.teleport y")
+	if err != nil {
+		return nil, err
+	}
+	z, err := doubleFrom(fields[6], "player.teleport z")
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[7], "player.teleport dimension")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[8])
+	if err != nil {
+		return nil, err
+	}
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
