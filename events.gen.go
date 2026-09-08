@@ -83,6 +83,9 @@ func (e *BlockBreakEvent) Can(node string) bool { return e.permissions[node] }
 //
 // EventControl carries cancellation, just as it does for custom events.
 func (e *Events) OnBlockBreak(handler func(*BlockBreakEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
 	return e.On(EventBlockBreak, func(event Event, control EventControl) {
 		if typed, ok := event.(*BlockBreakEvent); ok {
 			handler(typed, control)
