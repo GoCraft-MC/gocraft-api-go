@@ -269,6 +269,96 @@ func blockPlaceFrom(fields []abi.Value, sink *effects) (*BlockPlaceEvent, error)
 // can prevent what already happened.
 type PlayerQuitEvent struct {
 	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Reason string
+}
+
+func (*PlayerQuitEvent) Type() string { return EventPlayerQuit }
+
+// OnPlayerQuit registers a handler for player.quit.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// Observational listeners receive only the payload, with no cancellation.
+func (e *Events) OnPlayerQuit(handler func(*PlayerQuitEvent)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerQuit, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerQuitEvent); ok {
+			handler(typed)
+		}
+	})
+}
+
+func playerQuitFrom(fields []abi.Value, sink *effects) (*PlayerQuitEvent, error) {
+	if len(fields) != 2 {
+		return nil, fmt.Errorf("gocraft: player.quit has %d fields, want 2", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	reason, err := stringFrom(fields[1], "player.quit reason")
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerQuitEvent{Player: player, Reason: reason}, nil
+}
+
+// PlayerChatEvent is the player.chat event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerChatEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Mutable: changes are returned to the host after dispatch.
+	Message string
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*PlayerChatEvent) Type() string { return EventPlayerChat }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *PlayerChatEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnPlayerChat registers a handler for player.chat.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnPlayerChat(handler func(*PlayerChatEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerChat, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerChatEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func playerChatFrom(fields []abi.Value, sink *effects) (*PlayerChatEvent, error) {
+	if len(fields) != 3 {
+		return nil, fmt.Errorf("gocraft: player.chat has %d fields, want 3", len(fields))
+	}
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
