@@ -159,7 +159,7 @@ func (e *Events) OnPlayerJoin(handler func(*PlayerJoinEvent)) error {
 	}
 	return e.On(EventPlayerJoin, func(event Event, control EventControl) {
 		if typed, ok := event.(*PlayerJoinEvent); ok {
-			handler(typed, control)
+			handler(typed)
 		}
 	})
 }
