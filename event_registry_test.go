@@ -45,7 +45,7 @@ func TestEventsDispatchInOrderAndRecoverPanics(t *testing.T) {
 func TestEventsClearPreventsFutureCallbacks(t *testing.T) {
 	events := newEvents(slog.Default(), "fr.oreo.hello", nil, nil)
 	called := false
-	if err := events.OnPlayerJoin(func(*PlayerJoinEvent, EventControl) { called = true }); err != nil {
+	if err := events.OnPlayerJoin(func(*PlayerJoinEvent) { called = true }); err != nil {
 		t.Fatal(err)
 	}
 	events.clear()
@@ -53,7 +53,7 @@ func TestEventsClearPreventsFutureCallbacks(t *testing.T) {
 	if called {
 		t.Fatal("disabled registry invoked a listener")
 	}
-	if err := events.OnPlayerJoin(func(*PlayerJoinEvent, EventControl) {}); err == nil {
+	if err := events.OnPlayerJoin(func(*PlayerJoinEvent) {}); err == nil {
 		t.Fatal("disabled registry accepted a listener")
 	}
 }
