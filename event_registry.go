@@ -33,7 +33,7 @@ func (e *Events) registeredTypes() []string {
 	return types
 }
 
-func (e *Events) dispatch(event Event) {
+func (e *Events) dispatch(event Event, answer EventControl) {
 	e.mu.RLock()
 	if !e.active {
 		e.mu.RUnlock()
@@ -42,18 +42,18 @@ func (e *Events) dispatch(event Event) {
 	listeners := append([]EventHandler(nil), e.listeners[event.Type()]...)
 	e.mu.RUnlock()
 	for _, listener := range listeners {
-		e.call(listener, event)
+		e.call(listener, event, answer)
 	}
 }
 
-func (e *Events) call(listener EventHandler, event Event) {
+func (e *Events) call(listener EventHandler, event Event, answer EventControl) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			e.logger.Error("plugin event panicked", "event", event.Type(),
 				"panic", recovered, "stack", string(debug.Stack()))
 		}
 	}()
-	listener(event)
+	listener(event, answer)
 }
 
 func (e *Events) clear() {

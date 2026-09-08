@@ -68,7 +68,7 @@ func TestRuntimeCommandDispatchReturnsRepliesAndErrors(t *testing.T) {
 	}
 	// A reply is a chat.message the host queues, the same host call an event
 	// handler produces. There is no command-shaped reply message any more.
-	if len(result.Effects) != 1 || result.Effects[0].Type != hostCallMessage ||
+	if len(result.Effects) != 1 || result.Effects[0].Type != EffectMessage ||
 		result.Effects[0].Fields[1].String != "created three blocks" {
 		t.Fatalf("command effects = %#v", result.Effects)
 	}

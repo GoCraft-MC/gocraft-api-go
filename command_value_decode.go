@@ -7,7 +7,7 @@ import (
 	abi "github.com/GoCraft-MC/gocraft-abi/abi/v1"
 )
 
-func commandValueFrom(kind CommandValueKind, value abi.Value) (CommandValue, error) {
+func commandValueFrom(kind CommandValueKind, value abi.Value, sink *effects) (CommandValue, error) {
 	decoded := CommandValue{Kind: kind}
 	switch kind {
 	case CommandInteger:
@@ -27,11 +27,13 @@ func commandValueFrom(kind CommandValueKind, value abi.Value) (CommandValue, err
 		}
 		decoded.Text = text
 	case CommandPlayer:
-		player, err := playerFrom(value)
+		// Bound like the sender: a command that names a player is usually a
+		// command that wants to tell them something.
+		player, err := playerFrom(value, sink)
 		if err != nil {
 			return decoded, err
 		}
-		decoded.Player = &player
+		decoded.Player = player
 	case CommandBlockPos:
 		position, err := positionFrom(value)
 		if err != nil {

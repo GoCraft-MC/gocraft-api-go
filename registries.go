@@ -6,16 +6,30 @@ import (
 	"sync"
 )
 
-// Events owns listeners registered by one plugin.
+// Events owns listeners registered by one plugin, and publishes the events the
+// plugin declares it provides.
 type Events struct {
 	mu        sync.RWMutex
 	logger    *slog.Logger
 	listeners map[string][]EventHandler
 	active    bool
+
+	// pluginID travels with every emission: the host skips this plugin's own
+	// subscribers, so it has to know who is publishing.
+	pluginID string
+	// bindings is the id table the host sent with LOAD, name to id. Only this
+	// plugin's own events are in it.
+	bindings map[string]uint32
+	// emitter is nil in a plugin that has no connection — a command dump, or a
+	// test that builds a registry on its own.
+	emitter *emitter
 }
 
-func newEvents(logger *slog.Logger) *Events {
-	return &Events{logger: logger, listeners: make(map[string][]EventHandler), active: true}
+func newEvents(logger *slog.Logger, pluginID string, bindings map[string]uint32, publisher *emitter) *Events {
+	return &Events{
+		logger: logger, listeners: make(map[string][]EventHandler), active: true,
+		pluginID: pluginID, bindings: bindings, emitter: publisher,
+	}
 }
 
 // Commands owns command callbacks registered by one plugin.

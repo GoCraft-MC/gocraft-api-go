@@ -27,7 +27,7 @@ type CommandHandler func(*CommandContext) error
 
 // CommandContext contains host-validated command arguments.
 type CommandContext struct {
-	Sender     *Player
+	Sender     *PlayerRef
 	SenderName string
 	Args       CommandValues
 	replies    []string
@@ -61,7 +61,7 @@ type CommandValue struct {
 	Integer  int64
 	Decimal  float64
 	Text     string
-	Player   *Player
+	Player   *PlayerRef
 	Position BlockPos
 	Block    Block
 	Item     Item

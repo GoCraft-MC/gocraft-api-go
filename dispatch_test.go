@@ -11,12 +11,12 @@ type eventPlugin struct {
 }
 
 func (p *eventPlugin) OnLoad(context Context) error {
-	if err := context.Events().OnPlayerJoin(func(*PlayerJoinEvent) { p.joins++ }); err != nil {
+	if err := context.Events().OnPlayerJoin(func(*PlayerJoinEvent, EventControl) { p.joins++ }); err != nil {
 		return err
 	}
-	return context.Events().OnBlockBreak(func(event *BlockBreakEvent) {
+	return context.Events().OnBlockBreak(func(event *BlockBreakEvent, control EventControl) {
 		p.breaks++
-		event.Cancel()
+		control.Cancel()
 	})
 }
 

@@ -11,12 +11,13 @@ type pluginContext struct {
 	scheduler *Scheduler
 }
 
-func newContext(metadata Metadata, data string, tree *commandTree, logger *slog.Logger) *pluginContext {
+func newContext(metadata Metadata, data string, tree *commandTree, logger *slog.Logger,
+	bindings map[string]uint32, publisher *emitter) *pluginContext {
 	return &pluginContext{
 		metadata:  metadata,
 		data:      data,
 		logger:    logger,
-		events:    newEvents(logger),
+		events:    newEvents(logger, metadata.ID, bindings, publisher),
 		commands:  newCommands(logger, tree),
 		scheduler: newScheduler(logger),
 	}

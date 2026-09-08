@@ -8,7 +8,7 @@ import (
 
 func TestWireVocabularyDecoding(t *testing.T) {
 	uuid := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
-	player, err := playerFrom(abi.List(abi.Bytes(uuid), abi.String("Elias"), abi.String("bedrock")))
+	player, err := playerFrom(abi.List(abi.Bytes(uuid), abi.String("Elias"), abi.String("bedrock")), &effects{})
 	if err != nil || player.Username != "Elias" || player.Edition != "bedrock" || player.UUID[15] != 16 {
 		t.Fatalf("playerFrom() = %#v, %v", player, err)
 	}
@@ -24,7 +24,7 @@ func TestWireVocabularyDecoding(t *testing.T) {
 }
 
 func TestWireVocabularyRejectsMalformedValues(t *testing.T) {
-	if _, err := playerFrom(abi.List()); err == nil {
+	if _, err := playerFrom(abi.List(), &effects{}); err == nil {
 		t.Fatal("malformed player was accepted")
 	}
 	if _, err := permissionsFrom(abi.String("admin")); err == nil {

@@ -24,7 +24,7 @@ func TestCommandsRegisterInvokeAndClear(t *testing.T) {
 	if mistyped == nil || !strings.Contains(mistyped.Error(), "shop sell <price>") {
 		t.Fatalf("a mistyped path was reported as %v", mistyped)
 	}
-	replies, err := commands.invoke(7, &CommandContext{Sender: &Player{Username: "Elias"}})
+	replies, err := commands.invoke(7, &CommandContext{Sender: &PlayerRef{Username: "Elias"}})
 	if !errors.Is(err, wantErr) || len(replies) != 1 || replies[0] != "hello Elias" {
 		t.Fatalf("invoke() = %v, %v", replies, err)
 	}

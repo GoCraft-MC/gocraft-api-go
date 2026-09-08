@@ -14,6 +14,10 @@ type loadRequest struct {
 	// commandTree is where the tree sits inside the bundle, empty when the
 	// plugin declares no commands.
 	commandTree string
+	// eventTypes binds the plugin-defined events this plugin provides or
+	// subscribes to, to the ids the host assigned them. Empty for a plugin that
+	// touches none.
+	eventTypes map[string]uint32
 }
 
 type runtimeState struct {
@@ -22,6 +26,9 @@ type runtimeState struct {
 	context        *pluginContext
 	initialized    bool
 	enabled        bool
+	// publisher is the plugin's half of the connection, set once the session
+	// starts. Nil when there is none — dumping commands, or a test.
+	publisher *emitter
 }
 
 func newRuntimeState(metadata Metadata, implementation Plugin) *runtimeState {
@@ -44,7 +51,8 @@ func (s *runtimeState) load(request loadRequest) ([]string, error) {
 		return nil, err
 	}
 	logger := slog.Default().With("plugin", s.metadata.ID)
-	s.context = newContext(s.metadata, request.dataDirectory, tree, logger)
+	s.context = newContext(s.metadata, request.dataDirectory, tree, logger,
+		request.eventTypes, s.publisher)
 	// Before OnLoad, so a plugin that also registers by hand sees a registry
 	// with its declared commands already in it rather than racing them.
 	if declaring, ok := s.implementation.(CommandPlugin); ok {
