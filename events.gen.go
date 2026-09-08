@@ -81,11 +81,7 @@ func (e *BlockBreakEvent) Can(node string) bool { return e.permissions[node] }
 // Typed, so there is no event name to misspell: the parameter is the
 // subscription. On accepts a name for anything this build does not know.
 //
-// The control is what a handler refuses with, and where it reaches a
-// player the event did not hand it. A handler that only watches may
-// ignore it; it is a parameter rather than a method on the event because
-// a plugin-defined event is a struct its author wrote, and one shape for
-// both beats two that differ by who wrote the event.
+// EventControl carries cancellation, just as it does for custom events.
 func (e *Events) OnBlockBreak(handler func(*BlockBreakEvent, EventControl)) error {
 	return e.On(EventBlockBreak, func(event Event, control EventControl) {
 		if typed, ok := event.(*BlockBreakEvent); ok {
