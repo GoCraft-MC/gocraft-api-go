@@ -48,6 +48,7 @@ const (
 // shares one budget for the whole event, so a handler that takes its
 // time is taking it from the others.
 type BlockBreakEvent struct {
+	// Snapshot: changing this field does not change the server.
 	Player *PlayerRef
 	Pos    BlockPos
 	Block  Block
