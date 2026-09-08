@@ -50,9 +50,12 @@ const (
 type BlockBreakEvent struct {
 	// Snapshot: changing this field does not change the server.
 	Player *PlayerRef
-	Pos    BlockPos
-	Block  Block
-	Tool   string
+	// Snapshot: changing this field does not change the server.
+	Pos BlockPos
+	// Snapshot: changing this field does not change the server.
+	Block Block
+	// Snapshot: changing this field does not change the server.
+	Tool string
 
 	// permissions is what the host resolved before dispatch. Unexported
 	// because the schema says an injected field surfaces as a query
