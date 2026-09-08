@@ -989,6 +989,96 @@ type EntityDamageEvent struct {
 func (*EntityDamageEvent) Type() string { return EventEntityDamage }
 
 // OnEntityDamage registers a handler for entity.damage.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnEntityDamage(handler func(*EntityDamageEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventEntityDamage, func(event Event, control EventControl) {
+		if typed, ok := event.(*EntityDamageEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func entityDamageFrom(fields []abi.Value, sink *effects) (*EntityDamageEvent, error) {
+	if len(fields) != 5 {
+		return nil, fmt.Errorf("gocraft: entity.damage has %d fields, want 5", len(fields))
+	}
+	entityID, err := int64From(fields[0], "entity.damage entity_id")
+	if err != nil {
+		return nil, err
+	}
+	entityType, err := stringFrom(fields[1], "entity.damage entity_type")
+	if err != nil {
+		return nil, err
+	}
+	damage, err := doubleFrom(fields[2], "entity.damage damage")
+	if err != nil {
+		return nil, err
+	}
+	cause, err := stringFrom(fields[3], "entity.damage cause")
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[4], "entity.damage dimension")
+	if err != nil {
+		return nil, err
+	}
+	return &EntityDamageEvent{EntityID: entityID, EntityType: entityType, Damage: damage, Cause: cause, Dimension: dimension}, nil
+}
+
+func nativeCancellable(eventType string) bool {
+	switch eventType {
+	case EventBlockBreak:
+		return true
+	case EventBlockPlace:
+		return true
+	case EventPlayerChat:
+		return true
+	case EventPlayerCommand:
+		return true
+	case EventPlayerDamage:
+		return true
+	case EventPlayerTeleport:
+		return true
+	case EventPlayerInteract:
+		return true
+	case EventInventoryClick:
+		return true
+	case EventItemUse:
+		return true
+	case EventEntityDamage:
+		return true
+	}
+	return false
+}
+
+// nativeMutations collects only fields the common schema permits writing.
+func nativeMutations(event Event, before []abi.Value) []abi.Mutation {
+	var mutations []abi.Mutation
+	switch event := event.(type) {
+	case *PlayerChatEvent:
+		if value := abi.String(event.Message); !abi.Equal(before[1], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{1}, Value: value})
+		}
+	case *PlayerCommandEvent:
+		if value := abi.String(event.Command); !abi.Equal(before[1], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{1}, Value: value})
+		}
+	case *PlayerDamageEvent:
+		if value := abi.Double(event.Damage); !abi.Equal(before[1], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{1}, Value: value})
+		}
+	case *PlayerTeleportEvent:
+		if value := abi.Double(event.X); !abi.Equal(before[4], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{4}, Value: value})
+		}
+		if value := abi.Double(event.Y); !abi.Equal(before[5], value) {
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
