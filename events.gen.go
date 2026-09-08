@@ -359,6 +359,96 @@ func playerChatFrom(fields []abi.Value, sink *effects) (*PlayerChatEvent, error)
 	if len(fields) != 3 {
 		return nil, fmt.Errorf("gocraft: player.chat has %d fields, want 3", len(fields))
 	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	message, err := stringFrom(fields[1], "player.chat message")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[2])
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerChatEvent{Player: player, Message: message, permissions: permissions}, nil
+}
+
+// PlayerCommandEvent is the player.command event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerCommandEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Mutable: changes are returned to the host after dispatch.
+	Command string
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*PlayerCommandEvent) Type() string { return EventPlayerCommand }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *PlayerCommandEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnPlayerCommand registers a handler for player.command.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnPlayerCommand(handler func(*PlayerCommandEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerCommand, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerCommandEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func playerCommandFrom(fields []abi.Value, sink *effects) (*PlayerCommandEvent, error) {
+	if len(fields) != 3 {
+		return nil, fmt.Errorf("gocraft: player.command has %d fields, want 3", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	command, err := stringFrom(fields[1], "player.command command")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[2])
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerCommandEvent{Player: player, Command: command, permissions: permissions}, nil
+}
+
+// PlayerDamageEvent is the player.damage event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerDamageEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Mutable: changes are returned to the host after dispatch.
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
