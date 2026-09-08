@@ -809,6 +809,96 @@ func playerInteractFrom(fields []abi.Value, sink *effects) (*PlayerInteractEvent
 	if err != nil {
 		return nil, err
 	}
+	return &PlayerInteractEvent{Player: player, Target: target, Pos: pos, EntityID: entityID, Item: item, Dimension: dimension, permissions: permissions}, nil
+}
+
+// InventoryClickEvent is the inventory.click event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type InventoryClickEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Container string
+	// Snapshot: changing this field does not change the server.
+	Slot int64
+	// Snapshot: changing this field does not change the server.
+	Button int64
+	// Snapshot: changing this field does not change the server.
+	Mode int64
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*InventoryClickEvent) Type() string { return EventInventoryClick }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *InventoryClickEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnInventoryClick registers a handler for inventory.click.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnInventoryClick(handler func(*InventoryClickEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventInventoryClick, func(event Event, control EventControl) {
+		if typed, ok := event.(*InventoryClickEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func inventoryClickFrom(fields []abi.Value, sink *effects) (*InventoryClickEvent, error) {
+	if len(fields) != 6 {
+		return nil, fmt.Errorf("gocraft: inventory.click has %d fields, want 6", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	container, err := stringFrom(fields[1], "inventory.click container")
+	if err != nil {
+		return nil, err
+	}
+	slot, err := int64From(fields[2], "inventory.click slot")
+	if err != nil {
+		return nil, err
+	}
+	button, err := int64From(fields[3], "inventory.click button")
+	if err != nil {
+		return nil, err
+	}
+	mode, err := int64From(fields[4], "inventory.click mode")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[5])
+	if err != nil {
+		return nil, err
+	}
+	return &InventoryClickEvent{Player: player, Container: container, Slot: slot, Button: button, Mode: mode, permissions: permissions}, nil
+}
+
+// ItemUseEvent is the item.use event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
