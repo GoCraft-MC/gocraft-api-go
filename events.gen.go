@@ -152,12 +152,11 @@ func (e *PlayerJoinEvent) Can(node string) bool { return e.permissions[node] }
 // Typed, so there is no event name to misspell: the parameter is the
 // subscription. On accepts a name for anything this build does not know.
 //
-// The control is what a handler refuses with, and where it reaches a
-// player the event did not hand it. A handler that only watches may
-// ignore it; it is a parameter rather than a method on the event because
-// a plugin-defined event is a struct its author wrote, and one shape for
-// both beats two that differ by who wrote the event.
-func (e *Events) OnPlayerJoin(handler func(*PlayerJoinEvent, EventControl)) error {
+// Observational listeners receive only the payload, with no cancellation.
+func (e *Events) OnPlayerJoin(handler func(*PlayerJoinEvent)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
 	return e.On(EventPlayerJoin, func(event Event, control EventControl) {
 		if typed, ok := event.(*PlayerJoinEvent); ok {
 			handler(typed, control)
