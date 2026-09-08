@@ -539,6 +539,96 @@ func (e *Events) OnPlayerDeath(handler func(*PlayerDeathEvent)) error {
 		if typed, ok := event.(*PlayerDeathEvent); ok {
 			handler(typed)
 		}
+	})
+}
+
+func playerDeathFrom(fields []abi.Value, sink *effects) (*PlayerDeathEvent, error) {
+	if len(fields) != 2 {
+		return nil, fmt.Errorf("gocraft: player.death has %d fields, want 2", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	cause, err := stringFrom(fields[1], "player.death cause")
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerDeathEvent{Player: player, Cause: cause}, nil
+}
+
+// PlayerRespawnEvent is the player.respawn event.
+//
+// Observational: the tick does not wait, and nothing a handler does
+// can prevent what already happened.
+type PlayerRespawnEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	X float64
+	// Snapshot: changing this field does not change the server.
+	Y float64
+	// Snapshot: changing this field does not change the server.
+	Z float64
+	// Snapshot: changing this field does not change the server.
+	Dimension int64
+}
+
+func (*PlayerRespawnEvent) Type() string { return EventPlayerRespawn }
+
+// OnPlayerRespawn registers a handler for player.respawn.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// Observational listeners receive only the payload, with no cancellation.
+func (e *Events) OnPlayerRespawn(handler func(*PlayerRespawnEvent)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerRespawn, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerRespawnEvent); ok {
+			handler(typed)
+		}
+	})
+}
+
+func playerRespawnFrom(fields []abi.Value, sink *effects) (*PlayerRespawnEvent, error) {
+	if len(fields) != 5 {
+		return nil, fmt.Errorf("gocraft: player.respawn has %d fields, want 5", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	x, err := doubleFrom(fields[1], "player.respawn x")
+	if err != nil {
+		return nil, err
+	}
+	y, err := doubleFrom(fields[2], "player.respawn y")
+	if err != nil {
+		return nil, err
+	}
+	z, err := doubleFrom(fields[3], "player.respawn z")
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[4], "player.respawn dimension")
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerRespawnEvent{Player: player, X: x, Y: y, Z: z, Dimension: dimension}, nil
+}
+
+// PlayerTeleportEvent is the player.teleport event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerTeleportEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
