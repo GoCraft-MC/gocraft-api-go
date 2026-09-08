@@ -1079,6 +1079,19 @@ func nativeMutations(event Event, before []abi.Value) []abi.Mutation {
 			mutations = append(mutations, abi.Mutation{Path: []uint32{4}, Value: value})
 		}
 		if value := abi.Double(event.Y); !abi.Equal(before[5], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{5}, Value: value})
+		}
+		if value := abi.Double(event.Z); !abi.Equal(before[6], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{6}, Value: value})
+		}
+	case *EntityDamageEvent:
+		if value := abi.Double(event.Damage); !abi.Equal(before[2], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{2}, Value: value})
+		}
+	}
+	return mutations
+}
+
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
@@ -1096,6 +1109,30 @@ func eventFrom(incoming *abi.Event, sink *effects) (Event, error) {
 		return blockBreakFrom(incoming.Fields, sink)
 	case EventPlayerJoin:
 		return playerJoinFrom(incoming.Fields, sink)
+	case EventBlockPlace:
+		return blockPlaceFrom(incoming.Fields, sink)
+	case EventPlayerQuit:
+		return playerQuitFrom(incoming.Fields, sink)
+	case EventPlayerChat:
+		return playerChatFrom(incoming.Fields, sink)
+	case EventPlayerCommand:
+		return playerCommandFrom(incoming.Fields, sink)
+	case EventPlayerDamage:
+		return playerDamageFrom(incoming.Fields, sink)
+	case EventPlayerDeath:
+		return playerDeathFrom(incoming.Fields, sink)
+	case EventPlayerRespawn:
+		return playerRespawnFrom(incoming.Fields, sink)
+	case EventPlayerTeleport:
+		return playerTeleportFrom(incoming.Fields, sink)
+	case EventPlayerInteract:
+		return playerInteractFrom(incoming.Fields, sink)
+	case EventInventoryClick:
+		return inventoryClickFrom(incoming.Fields, sink)
+	case EventItemUse:
+		return itemUseFrom(incoming.Fields, sink)
+	case EventEntityDamage:
+		return entityDamageFrom(incoming.Fields, sink)
 	default:
 		return customFrom(incoming, sink)
 	}
