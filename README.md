@@ -113,6 +113,37 @@ large enough to matter.
 
 Do not edit it. A hand-written event is a second definition of the wire format.
 
+Typed native callbacks receive event pointers. Only cancellable callbacks also
+receive the existing `EventControl` (`Cancel()` / `Cancelled()`). For example:
+
+```go
+context.Events().OnPlayerChat(func(e *gocraft.PlayerChatEvent, c gocraft.EventControl) {
+    if e.Message == "hidden" { c.Cancel(); return }
+    e.Message = "[plugin] " + e.Message
+})
+```
+
+Declare `player.chat` in `[[subscribe]]` in the manifest. `OnPlayerJoin` takes
+only `func(*PlayerJoinEvent)`: it is observational and cannot be cancelled.
+Typed nil handlers are rejected. Handlers within a plugin share the pointer
+and control; accepted mutations are visible to the next plugin at the host.
+
+Only generated fields documented as **Mutable** are collected into verdict
+mutations. All other fields are snapshots: changing `Player.Username`, a block
+or permission data locally does not change the server. Native chat/command
+text, damage and command-teleport destinations have mutable values; native
+join/quit/death/respawn notifications have none. The host validates mutation
+paths, types and finite numeric values before applying them.
+
+No additional IPC call is needed to return a mutation or cancellation. The
+existing verdict carries both. Go pointers and Java setters have equivalent
+wire semantics; language APIs do not reproduce each other's object model.
+The host preserves the JVM's handler-free shaped warm-up and bounded first-use
+grace. Keep handlers short: warmed blocking events share the 2 ms budget.
+
+The server's [native event guide](https://github.com/GoCraft-MC/GoCraft/blob/feat/go-events-api/docs/native-events.md)
+lists exact hook timing and current coverage boundaries.
+
 ## Commands
 
 ```sh
