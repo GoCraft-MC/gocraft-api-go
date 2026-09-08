@@ -125,6 +125,7 @@ func blockBreakFrom(fields []abi.Value, sink *effects) (*BlockBreakEvent, error)
 // Observational: the tick does not wait, and nothing a handler does
 // can prevent what already happened.
 type PlayerJoinEvent struct {
+	// Snapshot: changing this field does not change the server.
 	Player *PlayerRef
 
 	// permissions is what the host resolved before dispatch. Unexported
