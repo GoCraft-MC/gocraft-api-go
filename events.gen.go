@@ -719,6 +719,96 @@ func playerTeleportFrom(fields []abi.Value, sink *effects) (*PlayerTeleportEvent
 	if err != nil {
 		return nil, err
 	}
+	return &PlayerTeleportEvent{Player: player, FromX: fromX, FromY: fromY, FromZ: fromZ, X: x, Y: y, Z: z, Dimension: dimension, permissions: permissions}, nil
+}
+
+// PlayerInteractEvent is the player.interact event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerInteractEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Target string
+	// Snapshot: changing this field does not change the server.
+	Pos BlockPos
+	// Snapshot: changing this field does not change the server.
+	EntityID int64
+	// Snapshot: changing this field does not change the server.
+	Item string
+	// Snapshot: changing this field does not change the server.
+	Dimension int64
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*PlayerInteractEvent) Type() string { return EventPlayerInteract }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *PlayerInteractEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnPlayerInteract registers a handler for player.interact.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnPlayerInteract(handler func(*PlayerInteractEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerInteract, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerInteractEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func playerInteractFrom(fields []abi.Value, sink *effects) (*PlayerInteractEvent, error) {
+	if len(fields) != 7 {
+		return nil, fmt.Errorf("gocraft: player.interact has %d fields, want 7", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	target, err := stringFrom(fields[1], "player.interact target")
+	if err != nil {
+		return nil, err
+	}
+	pos, err := positionFrom(fields[2])
+	if err != nil {
+		return nil, err
+	}
+	entityID, err := int64From(fields[3], "player.interact entity_id")
+	if err != nil {
+		return nil, err
+	}
+	item, err := stringFrom(fields[4], "player.interact item")
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[5], "player.interact dimension")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[6])
+	if err != nil {
+		return nil, err
+	}
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
