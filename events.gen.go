@@ -16,6 +16,30 @@ const (
 	EventBlockBreak = "block.break"
 	// Observational, never cancelled. Introduced in ABI 1.
 	EventPlayerJoin = "player.join"
+	// Cancellable, blocks the tick, defaults to allow. Introduced in ABI 1.
+	EventBlockPlace = "block.place"
+	// Observational, never cancelled. Introduced in ABI 1.
+	EventPlayerQuit = "player.quit"
+	// Cancellable, blocks the tick, defaults to allow. Introduced in ABI 1.
+	EventPlayerChat = "player.chat"
+	// Cancellable, blocks the tick, defaults to allow. Introduced in ABI 1.
+	EventPlayerCommand = "player.command"
+	// Cancellable, blocks the tick, defaults to allow. Introduced in ABI 1.
+	EventPlayerDamage = "player.damage"
+	// Observational, never cancelled. Introduced in ABI 1.
+	EventPlayerDeath = "player.death"
+	// Observational, never cancelled. Introduced in ABI 1.
+	EventPlayerRespawn = "player.respawn"
+	// Cancellable, blocks the tick, defaults to allow. Introduced in ABI 1.
+	EventPlayerTeleport = "player.teleport"
+	// Cancellable, blocks the tick, defaults to allow. Introduced in ABI 1.
+	EventPlayerInteract = "player.interact"
+	// Cancellable, blocks the tick, defaults to allow. Introduced in ABI 1.
+	EventInventoryClick = "inventory.click"
+	// Cancellable, blocks the tick, defaults to allow. Introduced in ABI 1.
+	EventItemUse = "item.use"
+	// Cancellable, blocks the tick, defaults to allow. Introduced in ABI 1.
+	EventEntityDamage = "entity.damage"
 )
 
 // BlockBreakEvent is the block.break event.
@@ -24,10 +48,14 @@ const (
 // shares one budget for the whole event, so a handler that takes its
 // time is taking it from the others.
 type BlockBreakEvent struct {
+	// Snapshot: changing this field does not change the server.
 	Player *PlayerRef
-	Pos    BlockPos
-	Block  Block
-	Tool   string
+	// Snapshot: changing this field does not change the server.
+	Pos BlockPos
+	// Snapshot: changing this field does not change the server.
+	Block Block
+	// Snapshot: changing this field does not change the server.
+	Tool string
 
 	// permissions is what the host resolved before dispatch. Unexported
 	// because the schema says an injected field surfaces as a query
@@ -53,12 +81,11 @@ func (e *BlockBreakEvent) Can(node string) bool { return e.permissions[node] }
 // Typed, so there is no event name to misspell: the parameter is the
 // subscription. On accepts a name for anything this build does not know.
 //
-// The control is what a handler refuses with, and where it reaches a
-// player the event did not hand it. A handler that only watches may
-// ignore it; it is a parameter rather than a method on the event because
-// a plugin-defined event is a struct its author wrote, and one shape for
-// both beats two that differ by who wrote the event.
+// EventControl carries cancellation, just as it does for custom events.
 func (e *Events) OnBlockBreak(handler func(*BlockBreakEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
 	return e.On(EventBlockBreak, func(event Event, control EventControl) {
 		if typed, ok := event.(*BlockBreakEvent); ok {
 			handler(typed, control)
@@ -98,6 +125,7 @@ func blockBreakFrom(fields []abi.Value, sink *effects) (*BlockBreakEvent, error)
 // Observational: the tick does not wait, and nothing a handler does
 // can prevent what already happened.
 type PlayerJoinEvent struct {
+	// Snapshot: changing this field does not change the server.
 	Player *PlayerRef
 
 	// permissions is what the host resolved before dispatch. Unexported
@@ -124,15 +152,14 @@ func (e *PlayerJoinEvent) Can(node string) bool { return e.permissions[node] }
 // Typed, so there is no event name to misspell: the parameter is the
 // subscription. On accepts a name for anything this build does not know.
 //
-// The control is what a handler refuses with, and where it reaches a
-// player the event did not hand it. A handler that only watches may
-// ignore it; it is a parameter rather than a method on the event because
-// a plugin-defined event is a struct its author wrote, and one shape for
-// both beats two that differ by who wrote the event.
-func (e *Events) OnPlayerJoin(handler func(*PlayerJoinEvent, EventControl)) error {
+// Observational listeners receive only the payload, with no cancellation.
+func (e *Events) OnPlayerJoin(handler func(*PlayerJoinEvent)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
 	return e.On(EventPlayerJoin, func(event Event, control EventControl) {
 		if typed, ok := event.(*PlayerJoinEvent); ok {
-			handler(typed, control)
+			handler(typed)
 		}
 	})
 }
@@ -152,6 +179,919 @@ func playerJoinFrom(fields []abi.Value, sink *effects) (*PlayerJoinEvent, error)
 	return &PlayerJoinEvent{Player: player, permissions: permissions}, nil
 }
 
+// BlockPlaceEvent is the block.place event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type BlockPlaceEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Pos BlockPos
+	// Snapshot: changing this field does not change the server.
+	Block Block
+	// Snapshot: changing this field does not change the server.
+	Replaced Block
+	// Snapshot: changing this field does not change the server.
+	Dimension int64
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*BlockPlaceEvent) Type() string { return EventBlockPlace }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *BlockPlaceEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnBlockPlace registers a handler for block.place.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnBlockPlace(handler func(*BlockPlaceEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventBlockPlace, func(event Event, control EventControl) {
+		if typed, ok := event.(*BlockPlaceEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func blockPlaceFrom(fields []abi.Value, sink *effects) (*BlockPlaceEvent, error) {
+	if len(fields) != 6 {
+		return nil, fmt.Errorf("gocraft: block.place has %d fields, want 6", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	pos, err := positionFrom(fields[1])
+	if err != nil {
+		return nil, err
+	}
+	block, err := blockFrom(fields[2])
+	if err != nil {
+		return nil, err
+	}
+	replaced, err := blockFrom(fields[3])
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[4], "block.place dimension")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[5])
+	if err != nil {
+		return nil, err
+	}
+	return &BlockPlaceEvent{Player: player, Pos: pos, Block: block, Replaced: replaced, Dimension: dimension, permissions: permissions}, nil
+}
+
+// PlayerQuitEvent is the player.quit event.
+//
+// Observational: the tick does not wait, and nothing a handler does
+// can prevent what already happened.
+type PlayerQuitEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Reason string
+}
+
+func (*PlayerQuitEvent) Type() string { return EventPlayerQuit }
+
+// OnPlayerQuit registers a handler for player.quit.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// Observational listeners receive only the payload, with no cancellation.
+func (e *Events) OnPlayerQuit(handler func(*PlayerQuitEvent)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerQuit, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerQuitEvent); ok {
+			handler(typed)
+		}
+	})
+}
+
+func playerQuitFrom(fields []abi.Value, sink *effects) (*PlayerQuitEvent, error) {
+	if len(fields) != 2 {
+		return nil, fmt.Errorf("gocraft: player.quit has %d fields, want 2", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	reason, err := stringFrom(fields[1], "player.quit reason")
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerQuitEvent{Player: player, Reason: reason}, nil
+}
+
+// PlayerChatEvent is the player.chat event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerChatEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Mutable: changes are returned to the host after dispatch.
+	Message string
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*PlayerChatEvent) Type() string { return EventPlayerChat }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *PlayerChatEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnPlayerChat registers a handler for player.chat.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnPlayerChat(handler func(*PlayerChatEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerChat, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerChatEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func playerChatFrom(fields []abi.Value, sink *effects) (*PlayerChatEvent, error) {
+	if len(fields) != 3 {
+		return nil, fmt.Errorf("gocraft: player.chat has %d fields, want 3", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	message, err := stringFrom(fields[1], "player.chat message")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[2])
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerChatEvent{Player: player, Message: message, permissions: permissions}, nil
+}
+
+// PlayerCommandEvent is the player.command event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerCommandEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Mutable: changes are returned to the host after dispatch.
+	Command string
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*PlayerCommandEvent) Type() string { return EventPlayerCommand }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *PlayerCommandEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnPlayerCommand registers a handler for player.command.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnPlayerCommand(handler func(*PlayerCommandEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerCommand, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerCommandEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func playerCommandFrom(fields []abi.Value, sink *effects) (*PlayerCommandEvent, error) {
+	if len(fields) != 3 {
+		return nil, fmt.Errorf("gocraft: player.command has %d fields, want 3", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	command, err := stringFrom(fields[1], "player.command command")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[2])
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerCommandEvent{Player: player, Command: command, permissions: permissions}, nil
+}
+
+// PlayerDamageEvent is the player.damage event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerDamageEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Mutable: changes are returned to the host after dispatch.
+	Damage float64
+	// Snapshot: changing this field does not change the server.
+	Cause string
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*PlayerDamageEvent) Type() string { return EventPlayerDamage }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *PlayerDamageEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnPlayerDamage registers a handler for player.damage.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnPlayerDamage(handler func(*PlayerDamageEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerDamage, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerDamageEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func playerDamageFrom(fields []abi.Value, sink *effects) (*PlayerDamageEvent, error) {
+	if len(fields) != 4 {
+		return nil, fmt.Errorf("gocraft: player.damage has %d fields, want 4", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	damage, err := doubleFrom(fields[1], "player.damage damage")
+	if err != nil {
+		return nil, err
+	}
+	cause, err := stringFrom(fields[2], "player.damage cause")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[3])
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerDamageEvent{Player: player, Damage: damage, Cause: cause, permissions: permissions}, nil
+}
+
+// PlayerDeathEvent is the player.death event.
+//
+// Observational: the tick does not wait, and nothing a handler does
+// can prevent what already happened.
+type PlayerDeathEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Cause string
+}
+
+func (*PlayerDeathEvent) Type() string { return EventPlayerDeath }
+
+// OnPlayerDeath registers a handler for player.death.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// Observational listeners receive only the payload, with no cancellation.
+func (e *Events) OnPlayerDeath(handler func(*PlayerDeathEvent)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerDeath, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerDeathEvent); ok {
+			handler(typed)
+		}
+	})
+}
+
+func playerDeathFrom(fields []abi.Value, sink *effects) (*PlayerDeathEvent, error) {
+	if len(fields) != 2 {
+		return nil, fmt.Errorf("gocraft: player.death has %d fields, want 2", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	cause, err := stringFrom(fields[1], "player.death cause")
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerDeathEvent{Player: player, Cause: cause}, nil
+}
+
+// PlayerRespawnEvent is the player.respawn event.
+//
+// Observational: the tick does not wait, and nothing a handler does
+// can prevent what already happened.
+type PlayerRespawnEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	X float64
+	// Snapshot: changing this field does not change the server.
+	Y float64
+	// Snapshot: changing this field does not change the server.
+	Z float64
+	// Snapshot: changing this field does not change the server.
+	Dimension int64
+}
+
+func (*PlayerRespawnEvent) Type() string { return EventPlayerRespawn }
+
+// OnPlayerRespawn registers a handler for player.respawn.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// Observational listeners receive only the payload, with no cancellation.
+func (e *Events) OnPlayerRespawn(handler func(*PlayerRespawnEvent)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerRespawn, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerRespawnEvent); ok {
+			handler(typed)
+		}
+	})
+}
+
+func playerRespawnFrom(fields []abi.Value, sink *effects) (*PlayerRespawnEvent, error) {
+	if len(fields) != 5 {
+		return nil, fmt.Errorf("gocraft: player.respawn has %d fields, want 5", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	x, err := doubleFrom(fields[1], "player.respawn x")
+	if err != nil {
+		return nil, err
+	}
+	y, err := doubleFrom(fields[2], "player.respawn y")
+	if err != nil {
+		return nil, err
+	}
+	z, err := doubleFrom(fields[3], "player.respawn z")
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[4], "player.respawn dimension")
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerRespawnEvent{Player: player, X: x, Y: y, Z: z, Dimension: dimension}, nil
+}
+
+// PlayerTeleportEvent is the player.teleport event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerTeleportEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	FromX float64
+	// Snapshot: changing this field does not change the server.
+	FromY float64
+	// Snapshot: changing this field does not change the server.
+	FromZ float64
+	// Mutable: changes are returned to the host after dispatch.
+	X float64
+	// Mutable: changes are returned to the host after dispatch.
+	Y float64
+	// Mutable: changes are returned to the host after dispatch.
+	Z float64
+	// Snapshot: changing this field does not change the server.
+	Dimension int64
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*PlayerTeleportEvent) Type() string { return EventPlayerTeleport }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *PlayerTeleportEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnPlayerTeleport registers a handler for player.teleport.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnPlayerTeleport(handler func(*PlayerTeleportEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerTeleport, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerTeleportEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func playerTeleportFrom(fields []abi.Value, sink *effects) (*PlayerTeleportEvent, error) {
+	if len(fields) != 9 {
+		return nil, fmt.Errorf("gocraft: player.teleport has %d fields, want 9", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	fromX, err := doubleFrom(fields[1], "player.teleport from_x")
+	if err != nil {
+		return nil, err
+	}
+	fromY, err := doubleFrom(fields[2], "player.teleport from_y")
+	if err != nil {
+		return nil, err
+	}
+	fromZ, err := doubleFrom(fields[3], "player.teleport from_z")
+	if err != nil {
+		return nil, err
+	}
+	x, err := doubleFrom(fields[4], "player.teleport x")
+	if err != nil {
+		return nil, err
+	}
+	y, err := doubleFrom(fields[5], "player.teleport y")
+	if err != nil {
+		return nil, err
+	}
+	z, err := doubleFrom(fields[6], "player.teleport z")
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[7], "player.teleport dimension")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[8])
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerTeleportEvent{Player: player, FromX: fromX, FromY: fromY, FromZ: fromZ, X: x, Y: y, Z: z, Dimension: dimension, permissions: permissions}, nil
+}
+
+// PlayerInteractEvent is the player.interact event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type PlayerInteractEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Target string
+	// Snapshot: changing this field does not change the server.
+	Pos BlockPos
+	// Snapshot: changing this field does not change the server.
+	EntityID int64
+	// Snapshot: changing this field does not change the server.
+	Item string
+	// Snapshot: changing this field does not change the server.
+	Dimension int64
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*PlayerInteractEvent) Type() string { return EventPlayerInteract }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *PlayerInteractEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnPlayerInteract registers a handler for player.interact.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnPlayerInteract(handler func(*PlayerInteractEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventPlayerInteract, func(event Event, control EventControl) {
+		if typed, ok := event.(*PlayerInteractEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func playerInteractFrom(fields []abi.Value, sink *effects) (*PlayerInteractEvent, error) {
+	if len(fields) != 7 {
+		return nil, fmt.Errorf("gocraft: player.interact has %d fields, want 7", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	target, err := stringFrom(fields[1], "player.interact target")
+	if err != nil {
+		return nil, err
+	}
+	pos, err := positionFrom(fields[2])
+	if err != nil {
+		return nil, err
+	}
+	entityID, err := int64From(fields[3], "player.interact entity_id")
+	if err != nil {
+		return nil, err
+	}
+	item, err := stringFrom(fields[4], "player.interact item")
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[5], "player.interact dimension")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[6])
+	if err != nil {
+		return nil, err
+	}
+	return &PlayerInteractEvent{Player: player, Target: target, Pos: pos, EntityID: entityID, Item: item, Dimension: dimension, permissions: permissions}, nil
+}
+
+// InventoryClickEvent is the inventory.click event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type InventoryClickEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Container string
+	// Snapshot: changing this field does not change the server.
+	Slot int64
+	// Snapshot: changing this field does not change the server.
+	Button int64
+	// Snapshot: changing this field does not change the server.
+	Mode int64
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*InventoryClickEvent) Type() string { return EventInventoryClick }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *InventoryClickEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnInventoryClick registers a handler for inventory.click.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnInventoryClick(handler func(*InventoryClickEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventInventoryClick, func(event Event, control EventControl) {
+		if typed, ok := event.(*InventoryClickEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func inventoryClickFrom(fields []abi.Value, sink *effects) (*InventoryClickEvent, error) {
+	if len(fields) != 6 {
+		return nil, fmt.Errorf("gocraft: inventory.click has %d fields, want 6", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	container, err := stringFrom(fields[1], "inventory.click container")
+	if err != nil {
+		return nil, err
+	}
+	slot, err := int64From(fields[2], "inventory.click slot")
+	if err != nil {
+		return nil, err
+	}
+	button, err := int64From(fields[3], "inventory.click button")
+	if err != nil {
+		return nil, err
+	}
+	mode, err := int64From(fields[4], "inventory.click mode")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[5])
+	if err != nil {
+		return nil, err
+	}
+	return &InventoryClickEvent{Player: player, Container: container, Slot: slot, Button: button, Mode: mode, permissions: permissions}, nil
+}
+
+// ItemUseEvent is the item.use event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type ItemUseEvent struct {
+	// Snapshot: changing this field does not change the server.
+	Player *PlayerRef
+	// Snapshot: changing this field does not change the server.
+	Item string
+	// Snapshot: changing this field does not change the server.
+	Hand int64
+
+	// permissions is what the host resolved before dispatch. Unexported
+	// because the schema says an injected field surfaces as a query
+	// rather than as a map to rummage through, and because a handler
+	// that could write to it would be answering its own question.
+	permissions map[string]bool
+}
+
+func (*ItemUseEvent) Type() string { return EventItemUse }
+
+// Can reports whether the acting player holds a permission node.
+//
+// Already resolved: the host answers every node the manifest subscribed
+// to and ships the answers inside the event, so this is a map lookup
+// rather than a round trip taken while the tick waits.
+//
+// A node the manifest never declared reads false, because the host was
+// never asked about it. That is a manifest bug, not a denial.
+func (e *ItemUseEvent) Can(node string) bool { return e.permissions[node] }
+
+// OnItemUse registers a handler for item.use.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnItemUse(handler func(*ItemUseEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventItemUse, func(event Event, control EventControl) {
+		if typed, ok := event.(*ItemUseEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func itemUseFrom(fields []abi.Value, sink *effects) (*ItemUseEvent, error) {
+	if len(fields) != 4 {
+		return nil, fmt.Errorf("gocraft: item.use has %d fields, want 4", len(fields))
+	}
+	player, err := playerFrom(fields[0], sink)
+	if err != nil {
+		return nil, err
+	}
+	item, err := stringFrom(fields[1], "item.use item")
+	if err != nil {
+		return nil, err
+	}
+	hand, err := int64From(fields[2], "item.use hand")
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := permissionsFrom(fields[3])
+	if err != nil {
+		return nil, err
+	}
+	return &ItemUseEvent{Player: player, Item: item, Hand: hand, permissions: permissions}, nil
+}
+
+// EntityDamageEvent is the entity.damage event.
+//
+// Cancellable, and dispatched while the tick waits. Every subscriber
+// shares one budget for the whole event, so a handler that takes its
+// time is taking it from the others.
+type EntityDamageEvent struct {
+	// Snapshot: changing this field does not change the server.
+	EntityID int64
+	// Snapshot: changing this field does not change the server.
+	EntityType string
+	// Mutable: changes are returned to the host after dispatch.
+	Damage float64
+	// Snapshot: changing this field does not change the server.
+	Cause string
+	// Snapshot: changing this field does not change the server.
+	Dimension int64
+}
+
+func (*EntityDamageEvent) Type() string { return EventEntityDamage }
+
+// OnEntityDamage registers a handler for entity.damage.
+//
+// Typed, so there is no event name to misspell: the parameter is the
+// subscription. On accepts a name for anything this build does not know.
+//
+// EventControl carries cancellation, just as it does for custom events.
+func (e *Events) OnEntityDamage(handler func(*EntityDamageEvent, EventControl)) error {
+	if handler == nil {
+		return fmt.Errorf("gocraft: event handler is required")
+	}
+	return e.On(EventEntityDamage, func(event Event, control EventControl) {
+		if typed, ok := event.(*EntityDamageEvent); ok {
+			handler(typed, control)
+		}
+	})
+}
+
+func entityDamageFrom(fields []abi.Value, sink *effects) (*EntityDamageEvent, error) {
+	if len(fields) != 5 {
+		return nil, fmt.Errorf("gocraft: entity.damage has %d fields, want 5", len(fields))
+	}
+	entityID, err := int64From(fields[0], "entity.damage entity_id")
+	if err != nil {
+		return nil, err
+	}
+	entityType, err := stringFrom(fields[1], "entity.damage entity_type")
+	if err != nil {
+		return nil, err
+	}
+	damage, err := doubleFrom(fields[2], "entity.damage damage")
+	if err != nil {
+		return nil, err
+	}
+	cause, err := stringFrom(fields[3], "entity.damage cause")
+	if err != nil {
+		return nil, err
+	}
+	dimension, err := int64From(fields[4], "entity.damage dimension")
+	if err != nil {
+		return nil, err
+	}
+	return &EntityDamageEvent{EntityID: entityID, EntityType: entityType, Damage: damage, Cause: cause, Dimension: dimension}, nil
+}
+
+func nativeCancellable(eventType string) bool {
+	switch eventType {
+	case EventBlockBreak:
+		return true
+	case EventBlockPlace:
+		return true
+	case EventPlayerChat:
+		return true
+	case EventPlayerCommand:
+		return true
+	case EventPlayerDamage:
+		return true
+	case EventPlayerTeleport:
+		return true
+	case EventPlayerInteract:
+		return true
+	case EventInventoryClick:
+		return true
+	case EventItemUse:
+		return true
+	case EventEntityDamage:
+		return true
+	}
+	return false
+}
+
+// nativeMutations collects only fields the common schema permits writing.
+func nativeMutations(event Event, before []abi.Value) []abi.Mutation {
+	var mutations []abi.Mutation
+	switch event := event.(type) {
+	case *PlayerChatEvent:
+		if value := abi.String(event.Message); !abi.Equal(before[1], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{1}, Value: value})
+		}
+	case *PlayerCommandEvent:
+		if value := abi.String(event.Command); !abi.Equal(before[1], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{1}, Value: value})
+		}
+	case *PlayerDamageEvent:
+		if value := abi.Double(event.Damage); !abi.Equal(before[1], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{1}, Value: value})
+		}
+	case *PlayerTeleportEvent:
+		if value := abi.Double(event.X); !abi.Equal(before[4], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{4}, Value: value})
+		}
+		if value := abi.Double(event.Y); !abi.Equal(before[5], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{5}, Value: value})
+		}
+		if value := abi.Double(event.Z); !abi.Equal(before[6], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{6}, Value: value})
+		}
+	case *EntityDamageEvent:
+		if value := abi.Double(event.Damage); !abi.Equal(before[2], value) {
+			mutations = append(mutations, abi.Mutation{Path: []uint32{2}, Value: value})
+		}
+	}
+	return mutations
+}
+
 // eventFrom reads one dispatched event.
 //
 // A native event is decoded against the layout generated with it. Anything
@@ -169,6 +1109,30 @@ func eventFrom(incoming *abi.Event, sink *effects) (Event, error) {
 		return blockBreakFrom(incoming.Fields, sink)
 	case EventPlayerJoin:
 		return playerJoinFrom(incoming.Fields, sink)
+	case EventBlockPlace:
+		return blockPlaceFrom(incoming.Fields, sink)
+	case EventPlayerQuit:
+		return playerQuitFrom(incoming.Fields, sink)
+	case EventPlayerChat:
+		return playerChatFrom(incoming.Fields, sink)
+	case EventPlayerCommand:
+		return playerCommandFrom(incoming.Fields, sink)
+	case EventPlayerDamage:
+		return playerDamageFrom(incoming.Fields, sink)
+	case EventPlayerDeath:
+		return playerDeathFrom(incoming.Fields, sink)
+	case EventPlayerRespawn:
+		return playerRespawnFrom(incoming.Fields, sink)
+	case EventPlayerTeleport:
+		return playerTeleportFrom(incoming.Fields, sink)
+	case EventPlayerInteract:
+		return playerInteractFrom(incoming.Fields, sink)
+	case EventInventoryClick:
+		return inventoryClickFrom(incoming.Fields, sink)
+	case EventItemUse:
+		return itemUseFrom(incoming.Fields, sink)
+	case EventEntityDamage:
+		return entityDamageFrom(incoming.Fields, sink)
 	default:
 		return customFrom(incoming, sink)
 	}

@@ -1,5 +1,5 @@
-github.com/GoCraft-MC/gocraft-abi v0.4.0 h1:5cgYWdpK5eAOK2Fc8HooY05D3haJxyfZAcAbpL9EgoI=
-github.com/GoCraft-MC/gocraft-abi v0.4.0/go.mod h1:PxAFmtTamYvRFzYO7g5jf1/8Vs9JwAJvT8vnYHP0exI=
+github.com/GoCraft-MC/gocraft-abi v0.4.1-0.20260909091520-46f15c995cb4 h1:C2rwNJUaGhJqw/Z0R5a0i5JM4pxo0UasyvFS7Bf/dH8=
+github.com/GoCraft-MC/gocraft-abi v0.4.1-0.20260909091520-46f15c995cb4/go.mod h1:PxAFmtTamYvRFzYO7g5jf1/8Vs9JwAJvT8vnYHP0exI=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
 google.golang.org/protobuf v1.36.11 h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=

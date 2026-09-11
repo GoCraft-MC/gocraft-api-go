@@ -21,10 +21,12 @@ func (s *runtimeState) dispatch(incoming *abi.Event) (abi.Verdict, error) {
 	s.context.events.dispatch(event, answer)
 
 	verdict := answer.verdict()
-	// A plugin-defined event adds what its handlers wrote. A native one has
-	// nothing to add: no field in the schema is writable yet.
+	// Both paths use the same positional Mutation transport.
 	if custom, ok := event.(*CustomDispatch); ok {
 		verdict.Mutations = custom.mutations
+	} else {
+		verdict.Mutations = nativeMutations(event, incoming.Fields)
+		verdict.Cancelled = verdict.Cancelled && nativeCancellable(incoming.Type)
 	}
 	return verdict, nil
 }
